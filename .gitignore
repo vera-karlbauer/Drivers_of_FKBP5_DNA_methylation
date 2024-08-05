@@ -1,7 +1,7 @@
 # Results, figures, and table folders
-./03_results
-./04_figures
-./05_tables
+03_results/
+04_figures/
+05_tables/
 
 # .DS_Store files
 .DS_Store
