@@ -4,6 +4,8 @@ Author: Vera N. Karlbauer
 Contact: vera_karlbauer@psych.mpg.de  
 Date created: 25-07-2024  
 
+[![DOI](https://zenodo.org/badge/838393393.svg)](https://zenodo.org/badge/latestdoi/838393393)
+
 ## Contains: 
 - 01_functions: core functions for statistical analysis  
 - 02_analysis: scripts for statistical analysis, including figure & table generation 
