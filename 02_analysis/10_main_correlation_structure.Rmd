@@ -1,0 +1,199 @@
+---
+title: "Correlation Structure"
+author: "Vera Natalia Karlbauer"
+contact: vera_karlbauer@psych.mpg.de
+date: 02-08-2024
+output:
+    html_document:
+    toc: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose:
+- Script 10 for manuscript on Drivers of FKBP5 DNA methylation.
+- Prepares covariates for correlation analysis.
+- Calculates calculation matrices between exposure scores and biodata that are either adjusted or unadjusted for cell types.
+- Creates correlation plots (figure 5a and 5b).
+
+# Setup
+
+## Step 1: Load packages
+
+```{r}
+# load packages
+library(rmarkdown)
+library(dplyr)
+library(corrplot)
+
+```
+
+## Step 2: Load data
+```{r}
+# set temporary wd for chunk to folder with preprocessed data
+setwd("../../01_data/02_proc")
+
+# all_time = methylation & covariates for T0 & T2
+load("covariates_both_timepoints.rda")
+
+```
+
+
+## Step 3: Prepare data for correlation plot of cell types & exposures
+
+```{r}
+# convert from long to wide format
+biodata_correlations <- tidyr::pivot_wider(data = covariates_both_timepoints, id_cols = Subject, names_from = Time , values_from = c("CD34", "CD14", "Buccal", "smoke_exposure_score", "alcohol_exposure_score", "gc_exposure_score", "CRP_Ln", "Cort_AUCg"), names_sep = "_t")
+# ungroup
+biodata_correlations <- biodata_correlations %>%
+  ungroup
+
+# set to numeric
+biodata_correlations <- mutate_all(biodata_correlations, as.numeric)
+
+# create dataframe with renamed variables for easy plotting
+biodata_corrplot <- select(biodata_correlations, -Subject)
+biodata_corrplot <- biodata_corrplot %>%
+  relocate(c(gc_exposure_score_t0, gc_exposure_score_t2, alcohol_exposure_score_t0,  alcohol_exposure_score_t2, smoke_exposure_score_t0, smoke_exposure_score_t2), .before = "CD34_t0") 
+biodata_corrplot <- biodata_corrplot %>%
+  dplyr::rename("CD34 cells T0" = CD34_t0,
+                "CD34 cells T2" = CD34_t2,
+                "CD14 cells T0" = CD14_t0, 
+                "CD14 cells T2" = CD14_t2, 
+                "Buccal cells T0" = Buccal_t0, 
+                "Buccal cells T2" = Buccal_t2, 
+                "Smoke exposure T0" = smoke_exposure_score_t0,
+                "Smoke exposure T2" = smoke_exposure_score_t2,
+                "Alcohol exposure T0" = alcohol_exposure_score_t0,
+                "Alcohol exposure T2" = alcohol_exposure_score_t2,
+                "GC exposure T0" = gc_exposure_score_t0,
+                "GC exposure T2" = gc_exposure_score_t2,
+                "CRP T0" = CRP_Ln_t0,
+                "CRP T2" = CRP_Ln_t2,
+                "Cortisol T0" = Cort_AUCg_t0,
+                "Cortisol T2" = Cort_AUCg_t2)
+
+```
+
+## Step 4: Prepare data for partial correlations of exposures between timepoints adjusted for cell counts
+
+```{r}
+### residualize cell counts out of exposure variables and biodata
+
+# create empty data frame for residuals
+biodata_corrected_cellcounts <- data.frame(matrix(NA,
+                          nrow = 115,
+                          ncol = 0))
+
+## glucocorticoid exposure
+# t0
+resid_gc_exposure_t0 <- lm(formula = gc_exposure_score_t0 ~ CD34_t0 + CD14_t0 + Buccal_t0, data = biodata_correlations)
+# append
+biodata_corrected_cellcounts$gc_exposure_score_t0 <- resid_gc_exposure_t0$residuals
+# t2
+resid_gc_exposure_t2 <- lm(formula = gc_exposure_score_t2 ~ CD34_t2 + CD14_t2 + Buccal_t2, data = biodata_correlations)
+# append
+biodata_corrected_cellcounts$gc_exposure_score_t2 <- resid_gc_exposure_t2$residuals
+
+## alcohol exposure
+# t0
+resid_alcohol_exposure_t0 <- lm(formula = alcohol_exposure_score_t0 ~ CD34_t0 + CD14_t0 + Buccal_t0, data = biodata_correlations)
+# append
+biodata_corrected_cellcounts$alcohol_exposure_score_t0 <- resid_alcohol_exposure_t0$residuals
+# t2
+resid_alcohol_exposure_t2 <- lm(formula = alcohol_exposure_score_t2 ~ CD34_t2 + CD14_t2 + Buccal_t2, data = biodata_correlations)
+# append
+biodata_corrected_cellcounts$alcohol_exposure_score_t2 <- resid_alcohol_exposure_t2$residuals
+
+## smoke exposure
+# t0
+resid_smoke_exposure_t0 <- lm(formula = smoke_exposure_score_t0 ~ CD34_t0 + CD14_t0 + Buccal_t0, data = biodata_correlations)
+# append
+biodata_corrected_cellcounts$smoke_exposure_score_t0 <- resid_smoke_exposure_t0$residuals
+# t2
+resid_smoke_exposure_t2 <- lm(formula = smoke_exposure_score_t2 ~ CD34_t2 + CD14_t2 + Buccal_t2, data = biodata_correlations)
+# append
+biodata_corrected_cellcounts$smoke_exposure_score_t2 <- resid_smoke_exposure_t2$residuals
+
+# rename variables for easy plotting
+biodata_corrected_cellcounts <- biodata_corrected_cellcounts %>%
+  dplyr::rename("Smoke exposure T0" = smoke_exposure_score_t0,
+                "Smoke exposure T2" = smoke_exposure_score_t2,
+                "Alcohol exposure T0" = alcohol_exposure_score_t0,
+                "Alcohol exposure T2" = alcohol_exposure_score_t2,
+                "GC exposure T0" = gc_exposure_score_t0,
+                "GC exposure T2" = gc_exposure_score_t2
+                )
+# make sure that everything is numeric
+biodata_corrected_cellcounts <- mutate_all(biodata_corrected_cellcounts, as.numeric)
+
+```
+
+# Analysis 
+
+## Step 1: Correlation plot of cell types, exposures, and biodata
+
+```{r}
+# create correlation matrix
+corrmat_biodata = cor(biodata_corrplot, use = "na.or.complete", method = "spearman")
+# test for significance
+pmat_biodata = cor.mtest(as.matrix(biodata_corrplot), conf.level = 0.95, method = "spearman", alternative = "two.sided", exact = FALSE)
+
+# initialize graphics device
+tiff(file = "../04_figures/figure_5a_corrplot_celltypes_exposures_biodata.png", height = 7, width = 10, units = 'in', res = 700)
+
+# plot
+corrplot(corr = corrmat_biodata,
+         method = "shade",
+         type = "lower",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.cex = 0.9,
+         number.cex = 0.7,
+         cl.cex = 0.9,
+         p.mat = pmat_biodata$p,
+         sig.level = 0.05,
+         insig = "label_sig",
+         pch = "    *",
+         pch.col = "orange",
+         pch.cex = 1.2)
+
+# shut off graphics device
+dev.off()
+```
+
+### Step 2: Partial correlations of exposures between timepoints adjusted for cell counts
+
+```{r}
+# create correlation matrix
+corrmat_biodata = cor(biodata_corrected_cellcounts, use = "na.or.complete", method = "spearman")
+# calculate p-values
+pmat_biodata = cor.mtest(as.matrix(biodata_corrected_cellcounts), conf.level = 0.95, method = "spearman", alternative = "two.sided")
+
+# initialize graphics device
+tiff(file = "../04_figures/figure_5b_corrplot_adjusted_exposures.png", height = 7, width = 10, units = 'in', res = 700)
+
+# plot
+corrplot(corr = corrmat_biodata,
+         method = "shade",
+         type = "lower",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.cex = 0.9,
+         number.cex = 0.7,
+         cl.cex = 0.9,
+         p.mat = pmat_biodata$p,
+         sig.level = 0.05,
+         insig = "label_sig",
+         pch = "     *",
+         pch.col = "orange",
+         pch.cex = 1.2)
+
+# shut off graphics device
+dev.off()
+
+```
+

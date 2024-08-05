@@ -1,0 +1,574 @@
+---
+title: 'Differential methylation: Prenatal glucocorticoid exposure'
+author: "Vera N. Karlbauer"
+contact: vera_karlbauer@psych.mpg.de
+date: 02-08-2024
+output:
+    html_document:
+    toc: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose:
+- Script 8 for manuscript on Drivers of FKBP5 DNA methylation.
+- Analyzes effects of prenatal glucocorticoid exposure on FKBP5 methylation via linear regression. 
+- Prenatal glucocortocid exposure was calculated according to Provencal et al. (2019): https://doi.org/10.1073/pnas.1820842116, supplement S8. 
+- Runs linear models for T0, T2, and over time including time and subject effects. 
+- Runs additive and multiplicative interaction models between GC exposure and genotype on FKBP5 methylation.  
+- Exports results and publication tables (supplementary tables B7 and B8).  
+- Plots significant additive interactions at T0 as lineplot and exports figure (figure 4).  
+- The functions looping the linear model over 49 CpGs, specifying all relevant covariates, and providing a dataframe with adjusted R squared, regression coefficients, p-values, and fdr-corrected p-values are specified in the script 01_functions/01_functions_fkbp5.R .  
+- All analyses are corrected for age, sex, genetic components (C1, C2, C3), cell type counts (CD34, CD14, buccal), prenatal smoke exposure, and prenatal alcohol exposure.
+
+# Setup
+
+## Step 0: Load packages
+
+```{r}
+# load packages
+library(rmarkdown)
+library(dplyr)
+library(lme4)
+library(stringr)
+library(tibble)
+library(ggplot2)
+library(ggpubr)
+library(rsq)
+library(finalfit)
+library(writexl)
+
+```
+
+## Step 1: Source functions
+
+```{r}
+source("../01_functions/01_functions_fkbp5.R")
+
+```
+
+
+## Step 2: Load data
+
+```{r, warning = FALSE}
+# set temporary wd for chunk to folder with preprocessed data
+setwd("../../01_data/02_proc")
+
+# all_t0 = methylation & covariates for T0
+load("all_t0.rda")
+
+# all_t2 = methylation & covariates for T2
+load("all_t2.rda")
+
+# all_time = methylation & covariates for T0 & T2
+load("all_time.rda")
+
+```
+
+# Analysis
+
+## Glucocorticoid effects at T0
+
+### Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and genotype as main predictor over 49 CpGs
+diffmeth_gc_t0 <- loop_lm_simple(data = all_t0, predictor_name = "gc_exposure_score")
+
+# count number of uncorrected significant hits
+count(diffmeth_gc_t0, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_gc_t0, sig_corrected)
+
+## export results
+# round values
+diffmeth_gc_t0 <- diffmeth_gc_t0 %>%
+  mutate(across(c("adj.R", "coef", "partial_adj.R"), round_tidy, 2),
+  # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+
+# export
+write.table(format(diffmeth_gc_t0, drop0trailing=FALSE), "../03_results/gc_exposure/results_diffmeth_gc_t0.txt", row.names = FALSE, sep = "\t")
+
+```
+
+### Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_gc_t0 <- diffmeth_gc_t0 %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_gc_t0 <- mutate(pubtable_diffmeth_gc_t0,
+                                 PCR = str_extract(pubtable_diffmeth_gc_t0$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_gc_t0$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                 timepoint = rep("T0", nrow(pubtable_diffmeth_gc_t0))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_gc_t0 <- select(pubtable_diffmeth_gc_t0,
+                                    functional_region, PCR, position, timepoint, adj.R, coef, partial_adj.R,p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_gc_t0, "../05_tables/gc_exposure/pubtable_results_diffmeth_gc_t0.xlsx", col_names = TRUE)
+
+```
+
+## Glucocorticoid effects at T2
+
+### Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and diagnosis as main predictor over 49 CpGs
+diffmeth_gc_t2 <- loop_lm_simple(data = all_t2, predictor_name = "gc_exposure_score")
+
+# count number of uncorrected significant hits
+count(diffmeth_gc_t2, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_gc_t2, sig_corrected)
+
+## export results
+# round values
+diffmeth_gc_t2 <- diffmeth_gc_t2 %>%
+  mutate(across(c("adj.R", "coef", "partial_adj.R"), round_tidy, 2),
+  # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round_tidy(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+# export
+write.table(format(diffmeth_gc_t2, drop0trailing = FALSE), "../03_results/gc_exposure/results_diffmeth_gc_t2.txt", row.names = FALSE, sep = "\t")
+
+```
+
+### Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_gc_t2 <- diffmeth_gc_t2 %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_gc_t2 <- mutate(pubtable_diffmeth_gc_t2,
+                                 PCR = str_extract(pubtable_diffmeth_gc_t2$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_gc_t2$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                 timepoint = rep("T0", nrow(pubtable_diffmeth_gc_t2))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_gc_t2 <- select(pubtable_diffmeth_gc_t2,
+                                    functional_region, PCR, position, timepoint, adj.R, coef, partial_adj.R, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_gc_t2, "../05_tables/gc_exposure/pubtable_results_diffmeth_gc_t2.xlsx", col_names = TRUE)
+
+```
+
+## Glucocorticoid effects over time
+
+### Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and diagnosis as main predictor over 49 CpGs
+diffmeth_gc_time <- loop_lm_time(data = all_time, predictor_name = "gc_exposure_score")
+
+# count number of uncorrected significant hits
+count(diffmeth_gc_time, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_gc_time, sig_corrected)
+
+## export results
+# round values
+diffmeth_gc_time <- diffmeth_gc_time %>%
+  mutate(across(c("AIC", "coef"), round_tidy, 2),
+  # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+
+# export
+write.table(diffmeth_gc_time, "../03_results/gc_exposure/results_diffmeth_gc_time.txt", row.names = FALSE, sep = "\t")
+
+```
+
+### Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_gc_time <- diffmeth_gc_time %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_gc_time <- mutate(pubtable_diffmeth_gc_time,
+                                 PCR = str_extract(pubtable_diffmeth_gc_time$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_gc_time$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_)
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_gc_time <- select(pubtable_diffmeth_gc_time,
+                                   functional_region, PCR, position, AIC, coef, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_gc_time, "../05_tables/gc_exposure/pubtable_results_diffmeth_gc_time.xlsx", col_names = TRUE)
+
+```
+
+
+## Glucocorticoid-genotype interaction at T0
+
+### Additive interaction
+
+Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and GC exposure and genotype as main predictors over 49 CpGs
+diffmeth_gc_geno_add_t0 <- loop_lm_additive(data = all_t0, predictor_1 = "gc_exposure_score", predictor_2 = "genotype")
+
+# count number of uncorrected significant hits
+count(diffmeth_gc_geno_add_t0, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_gc_geno_add_t0, sig_corrected)
+
+## export results
+# round values
+diffmeth_gc_geno_add_t0 <- diffmeth_gc_geno_add_t0 %>%
+  mutate(across(c("adj.R", "partial_adj.R_gc_exposure_score", "partial_adj.R_genotype", "coef_gc_exposure_score", "coef_genotype"), round_tidy, 2),
+  # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+# export
+write.table(diffmeth_gc_geno_add_t0, "../03_results/gc_exposure/results_diffmeth_gc_geno_add_t0.txt", row.names = FALSE, sep = "\t")
+```
+
+Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_gc_geno_add_t0 <- diffmeth_gc_geno_add_t0 %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_gc_geno_add_t0 <- mutate(pubtable_diffmeth_gc_geno_add_t0,
+                                 PCR = str_extract(pubtable_diffmeth_gc_geno_add_t0$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_gc_geno_add_t0$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                 interaction = rep("additive", nrow(pubtable_diffmeth_gc_geno_add_t0)))
+
+# select relevant variables
+pubtable_diffmeth_gc_geno_add_t0 <- select(pubtable_diffmeth_gc_geno_add_t0,
+                                           functional_region, PCR, position, interaction, adj.R, coef_gc_exposure_score, partial_adj.R_gc_exposure_score, coef_genotype, partial_adj.R_genotype, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_gc_geno_add_t0, "../05_tables/gc_exposure/pubtable_results_diffmeth_gc_geno_add_t0.xlsx", col_names = TRUE)
+
+```
+
+### Multiplicative interaction
+
+Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and GC exposure and genotype as main predictors over 49 CpGs
+diffmeth_gc_geno_mult_t0 <- loop_lm_multiplicative(data = all_t0, predictor_1 = "gc_exposure_score", predictor_2 = "genotype")
+
+# count number of uncorrected significant hits
+count(diffmeth_gc_geno_mult_t0, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_gc_geno_mult_t0, sig_corrected)
+
+## export results
+# round values
+diffmeth_gc_geno_mult_t0 <- diffmeth_gc_geno_mult_t0 %>%
+  mutate(across(c("adj.R", "partial_adj.R_gc_exposure_score", "partial_adj.R_genotype", "partial_adj.R_mult", "coef_gc_exposure_score", "coef_genotype", "coef_mult"), round_tidy, 2),
+  # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+# export
+write.table(diffmeth_gc_geno_mult_t0, "../03_results/gc_exposure/results_diffmeth_gc_geno_mult_t0.txt", row.names = FALSE, sep = "\t")
+```
+
+Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_gc_geno_mult_t0 <- diffmeth_gc_geno_mult_t0 %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_gc_geno_mult_t0 <- mutate(pubtable_diffmeth_gc_geno_mult_t0,
+                                 PCR = str_extract(pubtable_diffmeth_gc_geno_mult_t0$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_gc_geno_mult_t0$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                 interaction = rep("multiplicative", nrow(pubtable_diffmeth_gc_geno_mult_t0))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_gc_geno_mult_t0 <- select(pubtable_diffmeth_gc_geno_mult_t0,
+                                    functional_region, PCR, position, interaction, adj.R, coef_gc_exposure_score, partial_adj.R_gc_exposure_score, coef_genotype, partial_adj.R_genotype, coef_mult, partial_adj.R_mult, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_gc_geno_mult_t0, "../05_tables/gc_exposure/pubtable_results_diffmeth_gc_geno_mult_t0.xlsx", col_names = TRUE)
+```
+
+# Plot significant GC-genotype interactions at T0
+
+## CTCF_PCR_17_35490608
+
+### Prepare data
+
+```{r}
+data_gc_geno_plot_t0_CTCF_PCR_17_35490608 <- all_t0 %>%
+    # remove 1 ID with missing genotype
+  filter(!is.na(genotype)) %>%
+  mutate(
+  # label genotype
+  genotype = recode(genotype, "2" = "CT/TT", "1" = "CC"),
+  # convert genotype to factor
+ genotype = as.factor(genotype))
+
+```
+
+### Plot
+
+```{r}
+lineplot_gc_geno_CTCF_PCR_17_35490608 <- ggplot(data_gc_geno_plot_t0_CTCF_PCR_17_35490608, aes(x = gc_exposure_score, y = CTCF_PCR_17_35490608, color = genotype, shape = genotype)) +
+  geom_point() + 
+  geom_smooth(method=lm) +
+  theme_classic() +
+  ggtitle(label = "CTCF_PCR_17_35490608") +
+  xlab("GC exposure score") +
+  ylab("DNAm beta values (%)") +
+  scale_color_manual(values=c("#FFB2B2", "#CC5151")) +
+  theme_classic()
+
+lineplot_gc_geno_CTCF_PCR_17_35490608
+
+```
+
+
+## CTCF_PCR_17_35490619
+
+### Prepare data
+
+```{r}
+data_gc_geno_plot_t0_CTCF_PCR_17_35490619 <- all_t0 %>%
+    # remove 1 ID with missing genotype
+  filter(!is.na(genotype)) %>%
+  mutate(
+  # label genotype
+  genotype = recode(genotype, "2" = "CT/TT", "1" = "CC"),
+  # convert genotype to factor
+ genotype = as.factor(genotype))          
+
+```
+
+### Plot
+
+```{r}
+lineplot_gc_geno_CTCF_PCR_17_35490619 <- ggplot(data_gc_geno_plot_t0_CTCF_PCR_17_35490619, aes(x = gc_exposure_score, y = CTCF_PCR_17_35490619, color = genotype, shape = genotype)) +
+  geom_point() + 
+  geom_smooth(method=lm) +
+  theme_classic() +
+  ggtitle(label = "CTCF_PCR_17_35490619") +
+  xlab("GC exposure score") +
+  ylab("DNAm beta values (%)") +
+  scale_color_manual(values=c("#FFB2B2", "#CC5151")) +
+  theme_classic()
+
+lineplot_gc_geno_CTCF_PCR_17_35490619
+
+```
+
+
+## Combine into one figure and export
+
+```{r}
+# combine
+gc_geno_plot_combined <- ggarrange(lineplot_gc_geno_CTCF_PCR_17_35490608, lineplot_gc_geno_CTCF_PCR_17_35490619, common.legend = TRUE, legend = "right", ncol = 2)
+gc_geno_plot_combined
+
+# export
+ggsave(gc_geno_plot_combined, filename = "figure_4_gc_geno_lineplot_unresid.png", path = "../04_figures", device = 'png', height = 8, width = 13, dpi = 700, bg = "white")
+
+```
+
+## Glucocorticoid-genotype interaction at T2
+
+### Additive interaction
+
+Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and GC exposure and genotype as main predictors over 49 CpGs
+diffmeth_gc_geno_add_t2 <- loop_lm_additive(data = all_t2, predictor_1 = "gc_exposure_score", predictor_2 = "genotype")
+
+# count number of uncorrected significant hits
+count(diffmeth_gc_geno_add_t2, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_gc_geno_add_t2, sig_corrected)
+
+## export results
+# round values
+diffmeth_gc_geno_add_t2 <- diffmeth_gc_geno_add_t2 %>%
+  mutate(across(c("adj.R", "partial_adj.R_gc_exposure_score", "partial_adj.R_genotype",  "coef_gc_exposure_score", "coef_genotype"), round_tidy, 2),
+           # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+         
+# export
+write.table(diffmeth_gc_geno_add_t2, "../03_results/gc_exposure/results_diffmeth_gc_geno_add_t2.txt", row.names = FALSE, sep = "\t")
+```
+
+### Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_gc_geno_add_t2 <- diffmeth_gc_geno_add_t2 %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_gc_geno_add_t2 <- mutate(pubtable_diffmeth_gc_geno_add_t2,
+                                 PCR = str_extract(pubtable_diffmeth_gc_geno_add_t2$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_gc_geno_add_t2$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                 interaction = rep("additive", nrow(pubtable_diffmeth_gc_geno_add_t2))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_gc_geno_add_t2 <- select(pubtable_diffmeth_gc_geno_add_t2,
+                                    functional_region, PCR, position, interaction, adj.R, coef_gc_exposure_score, partial_adj.R_gc_exposure_score, coef_genotype, partial_adj.R_genotype, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_gc_geno_add_t2, "../05_tables/gc_exposure/pubtable_results_diffmeth_gc_geno_add_t2.xlsx", col_names = TRUE)
+
+```
+
+### Multiplicative interaction
+
+Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and GC exposure and genotype as main predictors over 49 CpGs
+diffmeth_gc_geno_mult_t2 <- loop_lm_multiplicative(data = all_t2, predictor_1 = "gc_exposure_score", predictor_2 = "genotype")
+
+# count number of uncorrected significant hits
+count(diffmeth_gc_geno_mult_t2, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_gc_geno_mult_t2, sig_corrected)
+
+## export results
+# round values
+diffmeth_gc_geno_mult_t2 <- diffmeth_gc_geno_mult_t2 %>%
+  mutate(across(c("adj.R", "partial_adj.R_gc_exposure_score", "partial_adj.R_genotype", "partial_adj.R_mult", "coef_gc_exposure_score", "coef_genotype", "coef_mult"), round_tidy, 2),
+  # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+
+# export
+write.table(diffmeth_gc_geno_mult_t2, "../03_results/gc_exposure/results_diffmeth_gc_geno_mult_t2.txt", row.names = FALSE, sep = "\t")
+```
+
+Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_gc_geno_mult_t2 <- diffmeth_gc_geno_mult_t2 %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_gc_geno_mult_t2 <- mutate(pubtable_diffmeth_gc_geno_mult_t2,
+                                 PCR = str_extract(pubtable_diffmeth_gc_geno_mult_t2$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_gc_geno_mult_t2$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                 interaction = rep("multiplicative", nrow(pubtable_diffmeth_gc_geno_mult_t2))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_gc_geno_mult_t2 <- select(pubtable_diffmeth_gc_geno_mult_t2,
+                                    functional_region, PCR, position, interaction, adj.R, coef_gc_exposure_score, partial_adj.R_gc_exposure_score, coef_genotype, partial_adj.R_genotype,  coef_mult, partial_adj.R_mult, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_gc_geno_mult_t2, "../05_tables/gc_exposure/pubtable_results_diffmeth_gc_geno_mult_t2.xlsx", col_names = TRUE)
+```

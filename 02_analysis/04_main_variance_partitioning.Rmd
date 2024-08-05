@@ -1,0 +1,222 @@
+---
+title: "Variance Partitioning"
+author: "Vera Natalia Karlbauer"
+contact: vera_karlbauer@psych.mpg.de
+date: 02-08-2024
+output:
+    html_document:
+    toc: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose:
+- Script 4 for manuscript on Drivers of FKBP5 DNA methylation.
+- Prepares data on FKBP5 methylation & covariates for variance partitioning.
+- Runs variance partitioning analysis to determine drivers of FKBP5 methylation & exports results.
+- Plots results as horizontal barplot (figure 2).
+
+# Setup
+
+## Step 1: Load packages
+
+```{r}
+# load packages
+library(rmarkdown)
+library(dplyr)
+library(ggplot2)
+library(variancePartition)
+library(tidyr)
+library(stringr)
+library(colorBlindness)
+library(haven)
+library(janitor)
+library(tibble)
+library(writexl)
+library(scales)
+
+```
+
+## Step 2: Load data
+
+```{r}
+# set temporary wd for chunk to folder with preprocessed data
+setwd("../../01_data/02_proc")
+
+# all_time = methylation & covariates for T0 & T2
+load("all_time.rda")
+
+# additional phenotypes
+psych_pheno <- read_sav("../01_raw/LCS_T0T4_TP2_Feb2019_fullversion_long-2.sav")
+# select relevant variables
+psych_pheno <- select(psych_pheno,
+                      SUBJECT,
+                      VISIT,
+                      SES
+                      )
+# delete labels
+psych_pheno <- zap_labels(psych_pheno)
+# subject as character
+psych_pheno$SUBJECT <- as.character(psych_pheno$SUBJECT)
+
+```
+
+## Step 3: Remove missing values & prepare data
+
+```{r}
+### methylation over time
+# join additional phenotypes
+all_time <- left_join(all_time, psych_pheno, by = c("Subject" = "SUBJECT", "Time" = "VISIT"))
+# remove CPGs with large amounts of missings
+all_time_nomiss <- dplyr::select(all_time, - c(CTCF_PCR_5.1_35704149, CTCF_PCR_5.1_35704224, FKBP5_PCR_12_35683488, FKBP5_PCR_18_35697759, FKBP5_PCR_18_35697810, FKBP5_int5_PCR_3_35578830, FKBP5_int5_PCR_3_35578739, FKBP5_int5_PCR_3_35578891, FKBP5_int5_PCR_2_35569751))
+# remove unnecessary variables
+all_time_nomiss <- dplyr::select(all_time_nomiss, 
+                                 -c(mergeID, MethID, cell_proportions, PAPA_sum, AA_AUCg_FR_or, CRP_Ln_or, 
+                                    Cort_AUCg_or, Cort_inter_AUCg, Cort_baseline, AA_AUCg_FR, life_events_A_total, 
+                                    life_events_A_cat, life_events_B_total, life_events_B_cat, adversity_score,
+                                    maltreatment_intensity, Nr_external, Nr_internal, preg_precl, preg_csection,
+                                    preg_preterm))
+# reduce to complete cases & set sample ID as rownames
+all_time_nomiss <- all_time_nomiss %>%
+  drop_na %>%
+  column_to_rownames(var = "Sample_ID")
+# count nr of distinct subjects 
+all_time_nomiss %>%
+  distinct(Subject) %>%
+  nrow()
+
+# create methylation matrix
+methylation_time_nomiss <- select(all_time_nomiss, contains("PCR"))
+methylation_time_nomiss <- t(methylation_time_nomiss)
+
+```
+
+# Analysis
+
+## Step 1: Variance partitioning over time
+
+```{r}
+# define formula (full model with all factors)
+form <- ~ Time + age + Sex + Case.Control + PAPA_any + genotype + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score + gc_exposure_score + Cort_AUCg + CRP_Ln + biomom_psych_diag +
+  life_events_total + preg_complications + SES + (1 | Subject)
+
+# variance partition
+varPart_time <- fitExtractVarPartModel(exprObj = methylation_time_nomiss, formula = form, data = all_time_nomiss, useWeights = FALSE, showWarnings = TRUE, quiet = FALSE)
+# create sorted results object
+varPart_time_sorted <- sortCols(varPart_time)
+# custom order of CpGs according to position
+cpg_order <- as.data.frame(matrix(NA, ncol = 0, nrow = 39))
+cpg_order$cpg <- rownames(varPart_time_sorted)
+cpg_order$position <- as.numeric(str_extract(cpg_order$cpg, "([3]{1}[0-9]{7})"))
+cpg_order <- cpg_order[order(cpg_order$position),]
+varPart_time_sorted <- varPart_time_sorted[order(factor(rownames(varPart_time_sorted), 
+                                                        levels = cpg_order$cpg)),]
+print(varPart_time_sorted)
+
+# get range of total variance explained
+round(range(rowSums(select(varPart_time_sorted, -Residuals))) * 100, digits = 2)
+rowSums(select(varPart_time_sorted, -Residuals))
+
+# get % of variance explained by cell counts
+var_cellcounts <- varPart_time_sorted$CD34 + varPart_time_sorted$CD14 + varPart_time_sorted$Buccal
+round(range(var_cellcounts) * 100, digits = 2)
+
+# get % of variance explained by CD34 cells
+round(range(varPart_time_sorted$CD34) * 100, digits = 3)
+
+# get % of variance explained by buccal cells
+round(range(varPart_time_sorted$Buccal) * 100, digits = 3)
+
+# get % of variance explained by CD14 cells
+round(range(varPart_time_sorted$CD14) * 100, digits = 3)
+
+# get % of variance explained by prenatal exposures
+var_exposures <- varPart_time_sorted$gc_exposure_score + varPart_time_sorted$alcohol_exposure_score + varPart_time_sorted$smoke_exposure_score
+round(range(var_exposures) * 100, digits = 2)
+
+# get % of variance explained by GC exposure
+round(range(varPart_time_sorted$gc_exposure_score) * 100, digits = 3)
+
+# get % of variance explained by alc exposure
+round(range(varPart_time_sorted$alcohol_exposure_score) * 100, digits = 3)
+
+# get % of variance explained by smoke exposure
+round(range(varPart_time_sorted$smoke_exposure_score) * 100, digits = 3)
+
+# get % of variance explained by maltreatment
+round(range(varPart_time_sorted$Case.Control) * 100, digits = 2)
+
+# get top 5 CpGs for variance explained by maltreatment
+varPart_time_sorted %>%
+  slice_max(Case.Control, n = 5) %>%
+  select(Case.Control)
+
+# export results
+# export as .txt
+write.table(varPart_time_sorted, file = "../03_results/variance_partitioning/results_varPart_time.txt", sep = "\t")
+# convert to %
+varPart_time_sorted_perc <- varPart_time_sorted
+varPart_time_sorted_perc[1:23] <- sapply(varPart_time_sorted_perc[1:23], function(x) percent(x, accuracy=0.001))
+varPart_time_sorted_perc <- varPart_time_sorted_perc %>%
+  rownames_to_column(var = "CpG") %>%
+  relocate(CpG, .before = CD34)
+# export as xlsx for manuscript
+write_xlsx(varPart_time_sorted_perc, path = "../05_tables/variance_partitioning/results_varPart_time.xlsx", col_names = TRUE)
+```
+
+
+## Step 2: Plot results
+
+```{r}
+# generate colors
+SteppedSequential5Steps
+Green2Magenta16Steps
+
+color_exposures <- c("#990F0F",  "#CC5151", "#E57E7E")
+# gc score, alcohol score, smoking score
+  
+color_celltypes <- c("#0F6B99","#51A3CC", "#7EC3E5")
+# CD34, buccal, CD14
+
+color_geno <- c("#6B990F","#85B22C", "#A3CC51", "#C3E57E")
+# C1, C2, genotype, C3
+
+color_pheno <- c("#99540F", "#B26F2C", "#CC8E51", "#E5B17E", "#FFD8B2")
+# biomom psych diag, maltreatment, preg complications, psych diagnosis, life events
+
+color_biodata <- c("#860086", "#F100F1")
+# cort, CRP
+  
+color_demo <- c("#260F99", "#422CB2", "#6551CC")
+# SES, sex, age
+
+color_time <- "#8F7EE5"
+
+color_subject <- "#BFB2FF"
+
+color_res <- "#D3D3D3"
+
+# set vector with distinguishable color values
+color_values <- c(color_celltypes[1], color_exposures[1], color_celltypes[2], color_exposures[2], color_demo[1],
+                  color_exposures[3], color_pheno[1], color_pheno[2], color_demo[2], color_demo[3],
+                  color_geno[1], color_pheno[3], color_celltypes[3], color_geno[2], color_geno[3], color_time,
+                  color_biodata[1], color_pheno[4], color_biodata[2], color_geno[4], color_pheno[5],
+                  color_subject, color_res)
+
+# check colorblind friendliness
+displayAllColors(color_values, color="white")
+
+plotPercentBars(varPart_time_sorted) +
+  theme(plot.margin = margin(1,1,1,1, "cm")) + 
+  theme(axis.text.y = element_text(size = 7)) +
+  theme(axis.text.x = element_text(size = 8)) +
+  theme(legend.key.size = unit(0.7, 'cm')) +
+  scale_fill_manual(values = color_values, labels = c("CD34 cells", "Glucocorticoid exposure score", "Buccal cells", "Prenatal alcohol exposure score", "SES", "Prenatal smoke exposure score", "Maternal psychopathology", "Maltreatment", "Sex", "Age", "C1 genetic component", "Pregnancy complications", "CD14 cells", "C2 genetic component", "rs1360780 genotype", "Time", "Cortisol", "Psychiatric diagnosis", "CRP", "C3 genetic component", "Life events", "Subject", "Residuals"))
+                                                      
+ggsave(filename = "figure_2_varpart_time_barplot.png", path = "../04_figures", device = 'png', width = 10, height = 5, dpi=700)
+
+```
+

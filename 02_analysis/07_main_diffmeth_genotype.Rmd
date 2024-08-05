@@ -1,0 +1,438 @@
+---
+title: 'Differential methylation: Genotype (rs1360780)'
+author: "Vera N. Karlbauer"
+date: "`r Sys.Date()`"
+contact: vera_karlbauer@psych.mpg.de
+date: 02-08-2024
+output:
+    html_document:
+    toc: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose:
+- Script 7 for manuscript on Drivers of FKBP5 DNA methylation.
+- Analyzes effects of rs1360780 genotype on FKBP5 methylation via linear regression. 
+- Runs linear models for T0, T2, and over time including time and subject effects.  
+- Exports results and publication tables (supplementary tables B5 and B6).  
+- Plots significant genotype effects at T0 as barplot and exports figure (figure 3).  
+- Analyzes additive and multiplicative interactions of rs1360780 genotype and maltreatment on FKBP5 methylation at T0. 
+- The functions looping the linear model over 49 CpGs, specifying all relevant covariates, and providing a dataframe with adjusted R squared, regression coefficients, p-values, and fdr-corrected p-values are specified in the script 01_functions/01_functions_fkbp5.R .  
+- All analyses are corrected for age, sex, genetic components (C1, C2, C3), cell type counts (CD34, CD14, buccal), prenatal smoke exposure, and prenatal alcohol exposure. 
+
+# Setup
+
+## Step 0: Load  packages
+
+```{r}
+# load packages
+library(rmarkdown)
+library(dplyr)
+library(lme4)
+library(stringr)
+library(tibble)
+library(ggplot2)
+library(cowplot)
+library(tidyr)
+library(rsq)
+library(finalfit)
+library(writexl)
+
+```
+
+## Step 1: Source functions
+
+```{r}
+source("../01_functions/01_functions_fkbp5.R")
+
+```
+
+## Step 2: Load data
+
+```{r, warning = FALSE}
+# set temporary wd for chunk to folder with preprocessed data
+setwd("../../01_data/02_proc")
+
+# all_t0 = methylation & covariates for T0
+load("all_t0.rda")
+
+# all_t2 = methylation & covariates for T2
+load("all_t2.rda")
+
+# all_time = methylation & covariates for T0 & T2
+load("all_time.rda")
+```
+
+# Analysis
+
+## Genotype effects at T0
+
+### Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and genotype as main predictor over 49 CpGs
+diffmeth_geno_t0 <- loop_lm_simple(data = all_t0, predictor_name = "genotype")
+
+# count number of uncorrected significant hits
+count(diffmeth_geno_t0, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_geno_t0, sig_corrected)
+
+## export results
+# round values
+diffmeth_geno_t0 <- diffmeth_geno_t0 %>%
+  mutate(across(c("adj.R", "coef", "partial_adj.R"), round_tidy, 2),
+  # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+# export
+write.table(diffmeth_geno_t0, "../03_results/genotype/results_diffmeth_geno_t0.txt", row.names = FALSE, sep = "\t")
+
+```
+
+### Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_geno_t0 <- diffmeth_geno_t0 %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_geno_t0 <- mutate(pubtable_diffmeth_geno_t0,
+                                 PCR = str_extract(pubtable_diffmeth_geno_t0$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_geno_t0$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                 timepoint = rep("T0", nrow(pubtable_diffmeth_geno_t0))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_geno_t0 <- select(pubtable_diffmeth_geno_t0,
+                                    functional_region, PCR, position, timepoint, adj.R, coef, partial_adj.R, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_geno_t0, "../05_tables/genotype/pubtable_results_diffmeth_geno_t0.xlsx", col_names = TRUE)
+
+```
+
+## Genotype effects at T2
+
+### Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and diagnosis as main predictor over 49 CpGs
+diffmeth_geno_t2 <- loop_lm_simple(data = all_t2, predictor_name = "genotype")
+
+# count number of uncorrected significant hits
+count(diffmeth_geno_t2, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_geno_t2, sig_corrected)
+
+## export results
+# round values
+diffmeth_geno_t2 <- diffmeth_geno_t2 %>%
+  mutate(across(c("adj.R", "coef", "partial_adj.R"), round_tidy, 2),
+  # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+# export
+write.table(diffmeth_geno_t2, "../03_results/genotype/results_diffmeth_geno_t2.txt", row.names = FALSE, sep = "\t")
+
+```
+
+### Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_geno_t2 <- diffmeth_geno_t2 %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_geno_t2 <- mutate(pubtable_diffmeth_geno_t2,
+                                 PCR = str_extract(pubtable_diffmeth_geno_t2$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_geno_t2$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                 timepoint = rep("T2", nrow(pubtable_diffmeth_geno_t2))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_geno_t2 <- select(pubtable_diffmeth_geno_t2,
+                                    functional_region, PCR, position, timepoint, adj.R, coef, partial_adj.R, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_geno_t2, "../05_tables/genotype/pubtable_results_diffmeth_geno_t2.xlsx", col_names = TRUE)
+
+```
+
+## Genotype effects over time
+
+### Exclude datapoints with missing genotype (model comparison anova will not run otherwise)
+
+```{r}
+all_time_nomiss <- filter(all_time, !is.na(genotype))
+
+```
+
+### Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and diagnosis as main predictor over 49 CpGs
+diffmeth_geno_time <- loop_lm_time(data = all_time_nomiss, predictor_name = "genotype")
+
+# count number of uncorrected significant hits
+count(diffmeth_geno_time, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_geno_time, sig_corrected)
+
+## export results
+# round values
+diffmeth_geno_time <- diffmeth_geno_time %>%
+  mutate(across(c("AIC", "coef"), round_tidy, 2),
+  # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+# export
+write.table(diffmeth_geno_time, "../03_results/genotype/results_diffmeth_geno_time.txt", row.names = FALSE, sep = "\t")
+
+```
+
+### Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_geno_time <- diffmeth_geno_time %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_geno_time <- mutate(pubtable_diffmeth_geno_time,
+                                 PCR = str_extract(pubtable_diffmeth_geno_time$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_geno_time$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                 timepoint = rep("T0->T2", nrow(pubtable_diffmeth_geno_time))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_geno_time <- select(pubtable_diffmeth_geno_time,
+                                   functional_region, PCR, position, timepoint, AIC, coef, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_geno_time, "../05_tables/genotype/pubtable_results_diffmeth_geno_time.xlsx", col_names = TRUE)
+
+```
+
+# Barplot significant CpGs (CTCF_PCR_17_35490608 & CTCF_PCR_17_35490619) at T0
+
+### Prepare data
+
+```{r}
+## check correlation between CTCF_PCR_17_35490608 & CTCF_PCR_17_35490619 at T0
+cor.test(all_t0$CTCF_PCR_17_35490608, all_t0$CTCF_PCR_17_35490619, alternative = "two.sided", method = "spearman")
+
+# modify variables 
+data_methyl_geno_plot_t0 <- all_t0 %>%
+  # remove 1 ID with missing genotype
+  filter(!is.na(genotype)) %>%
+  mutate(
+    # label genotype
+  genotype = recode(genotype, "2" = "CT/TT (n=75)", "1" = "CC (n=79)"),
+  # convert genotype to factor
+  genotype = as.factor(genotype))
+
+# convert to long format
+data_methyl_geno_plot_t0 <- pivot_longer(
+  data = data_methyl_geno_plot_t0,
+  cols = c("CTCF_PCR_17_35490608", "CTCF_PCR_17_35490619"),
+  names_to = "CpG",
+  values_to = "DNAm_percent"
+)
+
+```
+
+### Plot
+
+```{r}
+# set labels
+CpG.labs <- c("CTCF_PCR_17_35490608", "CTCF_PCR_17_35490619")
+names(CpG.labs) <- c("CTCF_PCR_17_35490608", "CTCF_PCR_17_35490619")
+
+# plot
+boxplot_genotype_t0 <- ggplot(data_methyl_geno_plot_t0, aes(x = genotype, y = DNAm_percent, fill = genotype)) +
+  stat_boxplot(geom = "errorbar",
+               width = 0.15) +
+  geom_boxplot(show.legend = FALSE) +
+  scale_fill_manual(values=c("#FFB2B2", "#CC5151")) +
+  xlab("Genotype") +
+  ylab("DNAm beta values (%)") +
+  theme_classic() +
+  facet_grid( ~ CpG, labeller = labeller(CpG = CpG.labs)) +
+  theme(
+   strip.background = element_blank(),
+   strip.text.x = element_text(size = 12
+        ))
+boxplot_genotype_t0
+
+# export
+ggsave(boxplot_genotype_t0, filename = "figure_3_geno_barplot_unresid.png", path = "../04_figures", device = 'png', height = 7, width = 10, dpi = 700)
+
+```
+
+# Genotype by maltreatment interaction at T0
+
+## Additive interaction
+
+### Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and genotype and maltreatment as main predictors over 49 CpGs
+diffmeth_geno_malt_add_t0 <- loop_lm_additive(data = all_t0, predictor_1 = "genotype", predictor_2 = "Case.Control")
+
+# count number of uncorrected significant hits
+count(diffmeth_geno_malt_add_t0, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_geno_malt_add_t0, sig_corrected)
+
+## export results
+# round values
+diffmeth_geno_malt_add_t0 <- diffmeth_geno_malt_add_t0 %>%
+  mutate(across(c("adj.R", "partial_adj.R_genotype", "partial_adj.R_genotype", "partial_adj.R_Case.Control", "coef_genotype", "coef_Case.Control"), round_tidy, 2),
+  # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+
+# export
+write.table(diffmeth_geno_malt_add_t0, "../03_results/genotype/results_diffmeth_geno_malt_add_t0.txt", row.names = FALSE, sep = "\t")
+
+```
+
+### Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_geno_malt_add_t0 <- diffmeth_geno_malt_add_t0 %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, functional region, and interaction type
+pubtable_diffmeth_geno_malt_add_t0 <- mutate(pubtable_diffmeth_geno_malt_add_t0,
+                                 PCR = str_extract(pubtable_diffmeth_geno_malt_add_t0$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_geno_malt_add_t0$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                interaction = rep("additive", nrow(pubtable_diffmeth_geno_malt_add_t0))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_geno_malt_add_t0 <- select(pubtable_diffmeth_geno_malt_add_t0,
+                                             functional_region, PCR, position, interaction, adj.R, coef_genotype, partial_adj.R_genotype, coef_Case.Control, partial_adj.R_Case.Control, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_geno_malt_add_t0, "../05_tables/genotype/pubtable_results_diffmeth_geno_malt_add_t0.xlsx", col_names = TRUE)
+
+```
+
+
+## Multiplicative interaction
+
+### Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and genotype and maltreatment as main predictors over 49 CpGs
+diffmeth_geno_malt_mult_t0 <- loop_lm_multiplicative(data = all_t0, predictor_1 = "genotype", predictor_2 = "Case.Control")
+
+# count number of uncorrected significant hits
+count(diffmeth_geno_malt_mult_t0, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_geno_malt_mult_t0, sig_corrected)
+
+## export results
+# round values
+diffmeth_geno_malt_mult_t0 <- diffmeth_geno_malt_mult_t0 %>%
+  mutate(across(c("adj.R", "partial_adj.R_genotype", "partial_adj.R_Case.Control", "partial_adj.R_mult", "coef_genotype", "coef_Case.Control", "coef_mult"), round_tidy, 2),
+  # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+# export
+write.table(diffmeth_geno_malt_mult_t0, "../03_results/genotype/results_diffmeth_geno_malt_mult_t0.txt", row.names = FALSE, sep = "\t")
+
+```
+
+
+### Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_geno_malt_mult_t0 <- diffmeth_geno_malt_mult_t0 %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_geno_malt_mult_t0 <- mutate(pubtable_diffmeth_geno_malt_mult_t0,
+                                 PCR = str_extract(pubtable_diffmeth_geno_malt_mult_t0$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_geno_malt_mult_t0$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                  interaction = rep("multiplicative", nrow(pubtable_diffmeth_geno_malt_mult_t0))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_geno_malt_mult_t0 <- select(pubtable_diffmeth_geno_malt_mult_t0,
+                                              functional_region, PCR, position, interaction, adj.R, coef_genotype, partial_adj.R_genotype, coef_Case.Control, partial_adj.R_Case.Control, coef_mult, partial_adj.R_mult, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_geno_malt_mult_t0, "../05_tables/genotype/pubtable_results_diffmeth_geno_malt_mult_t0.xlsx", col_names = TRUE)
+
+```

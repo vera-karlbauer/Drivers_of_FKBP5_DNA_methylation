@@ -1,0 +1,112 @@
+---
+title: "Appendix A: Exploration of correlations between exposure scores and maltreatment"
+author: "Vera N. Karlbauer"
+date: "`r Sys.Date()`"
+contact: vera_karlbauer@psych.mpg.de
+date: 02-08-2024
+output:
+    html_document:
+    toc: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose:
+- Script 11 for manuscript on Drivers of FKBP5 DNA methylation. 
+- Examine interactions between maltreatment and epigenetic prenatal alcohol exposure score on the epigenetic glucocorticoid exposure score at T0.  
+- Statistically test for interaction effect in linear model, adjusted for the usual covariates age, sex, genetic components (C1, C2, C3), cell type counts (CD34, CD14, buccal) and prenatal smoke exposure.  
+- Perform tercile split into high, medium, and low alcohol exposure and descriptively plot interaction between maltreatment and alcohol exposure on glucocorticoid exposure (supplementary figure A1).
+
+
+# Setup
+
+## Step 0: Load packages
+
+```{r}
+# load packages
+library(rmarkdown)
+library(dplyr)
+library(ggplot2)
+library(fabricatr)
+
+```
+
+
+## Step 1: Import data
+
+```{r}
+# set temporary wd for chunk to folder with preprocessed data
+setwd("../../01_data/02_proc")
+
+# all_t0 = methylation & covariates for T0
+load("all_t0.rda")
+
+```
+
+
+# Analysis
+
+## Examine distribution of epigenetic prenatal alcohol exposure score
+
+```{r}
+hist(all_t0$alcohol_exposure_score)
+```
+
+## Test for interaction effect of maltreatment and alcohol exposure score on glucocorticoid exposure score
+
+```{r}
+# fit model
+model_mt_alc_multiplicative <- lm(gc_exposure_score ~ Case.Control + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + alcohol_exposure_score + smoke_exposure_score + Case.Control*alcohol_exposure_score, data = all_t0)
+# inspect results
+summary(model_mt_alc_multiplicative)
+```
+
+
+## Tercile split epigenetic prenatal alcohol exposure score into low, medium, and high exposure 
+
+```{r}
+all_t0 <- all_t0 %>%
+  mutate(alcohol_cat = split_quantile(alcohol_exposure_score, 3))
+all_t0$alcohol_cat <- factor(all_t0$alcohol_cat)
+all_t0 <- all_t0 %>%
+  mutate(alcohol_cat = case_match(alcohol_cat, "1" ~ "low", 
+                                  "2" ~ "medium",
+                                  "3" ~ "high",
+                                  .default = NA_character_))
+
+# crosstable for frequencies in each group
+table(all_t0$Case.Control, all_t0$alcohol_cat)
+```
+
+## Plot and export epigenetic glucocorticoid exposure score at T0 stratified by maltreatment status and prenatal alcohol exposure
+
+```{r}
+ggplot(data = all_t0, 
+       aes(x=factor(alcohol_cat, levels = c("low", "medium", "high"), label = c("low", "medium", "high")), y=gc_exposure_score, fill = factor(Case.Control))) +
+  geom_boxplot() +
+  scale_fill_manual("Maltreatment status",
+                    values=c("#B2E5FF", "#51A3CC"), 
+                    labels = c("non-maltreated", "maltreated")) +
+  xlab("Epigenetic prenatal alcohol exposure score in terciles") +
+  ylab("Epigenetic glucocorticoid exposure score") +
+  # non-maltreated low alc = 31
+  annotate(geom="text", x=0.8, y=2.3, label="N=31", color="black") +
+  # maltreated low alc = 23
+  annotate(geom="text", x=1.2, y=2.3, label="N=23", color="black") +
+  # non-maltreated mid alc = 25
+  annotate(geom="text", x=1.8, y=2.1, label="N=25", color="black") +
+  # maltreated mid alc = 29
+  annotate(geom="text", x=2.2, y=2.1, label="N=29", color="black") +
+  # non-maltreated high alc = 23
+  annotate(geom="text", x=2.8, y=1.8, label="N=23", color="black") +
+  # maltreated high alc = 31
+  annotate(geom="text", x=3.2, y=1.8, label="N=31", color="black") +
+  theme_classic() +
+  theme(plot.title = element_text(size=13))
+ggsave(plot = last_plot(), filename = "supplementary_figure_a1_gc_maltreat_by_alc_T0.png", path = "../04_figures", device = 'png', height = 7, width = 10, dpi = 700)
+
+```
+

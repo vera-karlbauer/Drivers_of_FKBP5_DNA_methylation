@@ -1,0 +1,85 @@
+---
+title: "FKBP5 methylation levels"
+author: "Vera N. Karlbauer"
+contact: vera_karlbauer@psych.mpg.de
+date: 02-08-2024
+output:
+    html_document:
+    toc: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose:
+- Script 3 for manuscript on Drivers of FKBP5 DNA methylation.
+- Creates table of mean DNAm values for each covered CpG on FKBP5 at T0 (supplementary table B2). 
+
+## Setup
+
+### Step 0: Load  packages
+
+```{r}
+# load packages
+library(rmarkdown)
+library(dplyr)
+library(tibble)
+library(stringr)
+library(writexl)
+
+```
+
+### Step 1: Import data
+
+```{r}
+# set temporary wd for chunk to folder with preprocessed data
+setwd("/Users/vera_karlbauer/Documents/BerlinLCS/01_data/02_proc")
+
+# all DNAm data at T0
+load("methylation_perc.t0.rda")
+
+```
+
+
+# Create table with mean DNAm per CpG
+
+```{r}
+# sum up mean DNAm for all subjects for each CpG
+mean_meth_sumtable <- as.data.frame(rowMeans(methylation_perc.t0, na.rm = TRUE)) %>%
+  rownames_to_column(var = "CpG")
+colnames(mean_meth_sumtable) <- c("CpG", "mean_meth_perc")
+
+# add functional region, PCR, and position
+mean_meth_sumtable <- mean_meth_sumtable %>%
+  mutate(PCR = str_extract(mean_meth_sumtable$CpG, ".*(?=_3)"),
+         position = as.numeric(str_extract(mean_meth_sumtable$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_))
+
+# change column order
+mean_meth_sumtable <- mean_meth_sumtable %>%
+  relocate(functional_region, .before = PCR) %>%
+  relocate(mean_meth_perc, .after = position) %>%
+  select(-CpG)
+# round to 2 digits
+mean_meth_sumtable <- mean_meth_sumtable %>%
+  mutate(mean_meth_perc = round(mean_meth_perc, digits = 2))
+# sort by position
+mean_meth_sumtable <- mean_meth_sumtable[order(mean_meth_sumtable$position),]
+
+```
+
+
+# Export table
+
+```{r}
+write_xlsx(mean_meth_sumtable, "../05_tables/99_supplementary/mean_meth_sumtable.xlsx", col_names = TRUE)
+```
+

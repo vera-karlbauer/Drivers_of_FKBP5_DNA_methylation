@@ -1,0 +1,274 @@
+---
+title: "Script 01 - Drivers of FKBP5 DNA methylation: sample demographics"
+author: "Vera N. Karlbauer"
+contact: vera_karlbauer@psych.mpg.de
+date: 25-07-2024
+output: 
+  html_document:
+  toc: true
+  code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose:
+- Script 1 for manuscript on Drivers of FKBP5 DNA methylation.
+- Create table of sample demographics and distribution of key variables (table 1).
+- T-test group differences between maltreated and non-maltreated children on key variables.
+
+# Setup
+
+### Step 0: Load packages
+
+```{r}
+# load packages
+library(rmarkdown)
+library(dplyr)
+library(haven)
+library(formattable)
+library(tidyr)
+
+```
+
+### Step 1: Import data
+
+```{r}
+# all processed data over time 
+load("../../01_data/02_proc/all_time.rda")
+
+# additional phenotypes
+psych_pheno <- read_sav("../../01_data/01_raw/LCS_T0T4_TP2_Feb2019_fullversion_long-2.sav")
+
+```
+
+### Step 2: Process data
+
+```{r}
+## phenotypes
+# select relevant variables
+psych_pheno <- select(psych_pheno,
+                      SUBJECT,
+                      VISIT,
+                      SES
+                      )
+# delete labels
+psych_pheno <- zap_labels(psych_pheno)
+
+# subject as character
+psych_pheno$SUBJECT <- as.character(psych_pheno$SUBJECT)
+
+## covariates
+# select relevant variables  
+covariates <- select(all_time,
+                     Subject,
+                     Case.Control,
+                     age,
+                     Sex,
+                     Time,
+                     PAPA_any,
+                     genotype,
+                     Cort_AUCg,
+                     CRP_Ln,
+                     CD34,
+                     CD14,
+                     Buccal)
+
+```
+
+
+### Step 3: Create joint dataframe
+
+```{r}
+# join dataframes
+covariates <- left_join(covariates, psych_pheno, by = c("Subject" = "SUBJECT", "Time" = "VISIT"))
+covariates_t0 <- filter(covariates, Time == 0)
+covariates_t2 <- filter(covariates, Time == 2)
+
+```
+
+# Create demographics table
+
+```{r}
+# get total N per time point
+table(covariates$Time)
+
+# maltreatment frequency and % per time point
+covariates %>%
+  group_by(Time, Case.Control) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = formattable::percent(cnt / sum(cnt), digits = 1))
+
+# sex per maltreatment and time point
+covariates %>%
+  group_by(Time, Case.Control, Sex) %>%
+  summarise(cnt = n())
+
+# age and sd per maltreatment and time point
+covariates %>%
+  group_by(Time, Case.Control) %>%
+  summarise(mean_age = round(mean(age), digits = 2), sd_age = round(sd(age), digits = 2))
+
+# genotype frequency and % per time point
+covariates %>%
+  group_by(Time, genotype) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = formattable::percent(cnt / sum(cnt), digits = 1))
+
+# SES and sd per maltreatment and time point
+covariates %>%
+  group_by(Time, Case.Control) %>%
+  summarise(mean_ses = round(mean(SES), digits = 2), sd_ses = round(sd(SES), digits = 2))
+
+# psychiatric diagnosis and % by maltreatment and time point
+covariates %>%
+  drop_na(PAPA_any) %>%
+  group_by(Time, Case.Control, PAPA_any) %>%
+  summarise(cnt = n()) %>%
+  mutate(freq = formattable::percent(cnt / sum(cnt), digits = 1))
+
+# cort levels by maltreatment and time point
+covariates %>%
+  group_by(Time, Case.Control) %>%
+  summarise(mean_cort = round(mean(Cort_AUCg, na.rm = TRUE), digits = 2), sd_cort = round(sd(age), digits = 2))
+
+# CRP levels by maltreatment and time point
+covariates %>%
+  group_by(Time, Case.Control) %>%
+  summarise(mean_crp = round(mean(CRP_Ln, na.rm = TRUE), digits = 2), sd_crp = round(sd(CRP_Ln, na.rm = TRUE), digits = 2))
+
+# CD34 proportion (%) by maltreatment and time point
+covariates %>%
+  group_by(Time, Case.Control) %>%
+  summarise(mean_cd34 = round(mean(CD34, na.rm = TRUE), digits = 2), sd_cd34 = round(sd(CD34, na.rm = TRUE), digits = 2))
+
+# CD14 proportion (%) by maltreatment and time point
+covariates %>%
+  group_by(Time, Case.Control) %>%
+  summarise(mean_cd14 = round(mean(CD14, na.rm = TRUE), digits = 2), sd_cd14 = round(sd(CD14, na.rm = TRUE), digits = 2))
+
+# Buccal proportion (%) by maltreatment and time point
+covariates %>%
+  group_by(Time, Case.Control) %>%
+  summarise(mean_buccal = round(mean(Buccal, na.rm = TRUE), digits = 2), sd_buccal = round(sd(Buccal, na.rm = TRUE), digits = 2))
+
+```
+
+# Test group differences maltreated / non-maltreated
+
+## Sex
+
+```{r}
+# Fisher's exact test T0
+stats::chisq.test(covariates_t0$Sex, covariates_t0$Case.Control)
+
+# Fisher's exact test T2
+stats::chisq.test(covariates_t2$Sex, covariates_t2$Case.Control)
+
+```
+
+## Age
+
+```{r}
+# t-test T0
+t.test(age ~ Case.Control, data = covariates_t0)
+
+# t-test T2
+t.test(age ~ Case.Control, data = covariates_t2)
+
+```
+
+## SES
+
+```{r}
+# T-test
+# t-test T0
+t.test(SES ~ Case.Control, data = covariates_t0)
+format(2.2e-16, scientific = FALSE)
+
+# t-test T2
+t.test(SES ~ Case.Control, data = covariates_t2)
+format(1.828e-14, scientific = FALSE)
+
+```
+
+## Psychiatric diagnosis
+
+```{r}
+# Fisher's exact test T0
+stats::chisq.test(covariates_t0$PAPA_any, covariates_t0$Case.Control)
+format(9.198e-07, scientific = FALSE)
+
+# Fisher's exact test T2
+stats::chisq.test(covariates_t2$PAPA_any, covariates_t2$Case.Control)
+format(1.771e-06, scientific = FALSE)
+
+```
+
+## Cortisol
+
+```{r}
+# t-test T0
+t.test(Cort_AUCg ~ Case.Control, data = covariates_t0)
+
+# t-test T2
+t.test(Cort_AUCg ~ Case.Control, data = covariates_t2)
+
+```
+
+## CRP
+
+```{r}
+# t-test T0
+t.test(CRP_Ln ~ Case.Control, data = covariates_t0)
+
+# t-test T2
+t.test(CRP_Ln ~ Case.Control, data = covariates_t2)
+
+```
+
+## CD34
+
+```{r}
+# t-test T0
+t.test(CD34 ~ Case.Control, data = covariates_t0)
+
+# t-test T2
+t.test(CD34 ~ Case.Control, data = covariates_t2)
+
+```
+
+## CD14
+
+```{r}
+# t-test T0
+t.test(CD14 ~ Case.Control, data = covariates_t0)
+
+# t-test T2
+t.test(CD14 ~ Case.Control, data = covariates_t2)
+
+```
+
+
+## Buccal
+
+```{r}
+# t-test T0
+t.test(Buccal ~ Case.Control, data = covariates_t0)
+
+# t-test T2
+t.test(Buccal ~ Case.Control, data = covariates_t2)
+
+```
+
+## Genotype
+
+```{r}
+# chisq T0
+chisq.test(covariates_t0$genotype, covariates_t0$Case.Control)
+
+# chisq test T2
+chisq.test(covariates_t2$genotype, covariates_t2$Case.Control)
+
+```

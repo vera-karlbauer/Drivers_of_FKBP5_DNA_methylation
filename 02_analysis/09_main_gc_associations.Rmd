@@ -1,0 +1,343 @@
+---
+title: 'Prenatal GC exposure: Correlations'
+author: "Vera N. Karlbauer"
+date: "`r Sys.Date()`"
+contact: vera_karlbauer@psych.mpg.de
+date: 02-08-2024
+output:
+    html_document:
+    toc: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose:
+- Script 9 for manuscript on Drivers of FKBP5 DNA methylation.
+- Analyzes associations of prenatal glucocorticoid exposure with different maternal and childhood phenotypes. 
+- Runs linear regression models for T0 and T2. 
+- Exports results and publication tables (table 2).  
+- Phenotypes of interest: 
+  - maternal mental disorder
+  - self-reported pregnancy complications 
+  - pre-term birth 
+  - maltreatment (categorical)
+  - maltreatment severity (continuous)
+  - stressful life events & contextual stressors experienced by children.
+- Prenatal glucocortocid exposure was calculated according to Provencal et al. (2019): https://doi.org/10.1073/pnas.1820842116, supplement S8. 
+
+
+# Setup
+
+## Step 0: Load packages
+
+```{r}
+# load packages
+library(rmarkdown)
+library(dplyr)
+library(lme4)
+library(stringr)
+library(tibble)
+library(rsq)
+
+```
+
+
+## Step 1: Load data
+
+```{r, warning = FALSE}
+# set temporary wd for chunk to folder with preprocessed data
+setwd("../../01_data/02_proc")
+
+# all_t0 = methylation & covariates for T0
+load("all_t0.rda")
+
+# all_t2 = methylation & covariates for T2
+load("all_t2.rda")
+
+# create empty summary table
+sumtable_gc <- data.frame(matrix(nrow = 0, ncol = 5))
+colnames(sumtable_gc) <- c("phenotype", "time", "coef", "p", "adj_partial_Rsquared")
+
+```
+
+# Analysis
+## GC exposure & maternal mental disorder
+
+### T0
+
+```{r}
+# get distributions
+table(all_t0$biomom_psych_diag, useNA = "ifany")
+
+# fit model with covariates
+rsqpart <- rsq.partial(adj = TRUE, lm(gc_exposure_score ~  biomom_psych_diag + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t0, na.action = "na.omit"))$partial.rsq[1]
+model_gc_biomom_psych_t0_covar <- summary(lm(gc_exposure_score ~  biomom_psych_diag + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t0, na.action = "na.omit"))
+model_gc_biomom_psych_t0_covar
+
+# append values to table
+sumtable_gc[nrow(sumtable_gc) + 1,] <- c("Maternal psychiatric diagnosis", 
+                                        "T0", 
+                                        model_gc_biomom_psych_t0_covar$coefficients["biomom_psych_diag", "Estimate"],
+                                        model_gc_biomom_psych_t0_covar$coefficients["biomom_psych_diag", "Pr(>|t|)"],
+                                        rsqpart)
+
+```
+
+### T2
+
+```{r}
+# get distributions
+table(all_t2$biomom_psych_diag, useNA = "ifany")
+
+# fit model with covariates
+rsqpart <- rsq.partial(adj = TRUE, lm(gc_exposure_score ~ biomom_psych_diag + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t2, na.action = "na.omit"))$partial.rsq[1]
+model_gc_biomom_psych_t2_covar <- summary(lm(gc_exposure_score ~ biomom_psych_diag + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t2, na.action = "na.omit"))
+model_gc_biomom_psych_t2_covar
+
+# append values to table
+sumtable_gc[nrow(sumtable_gc) + 1,] <- c("Maternal psychiatric diagnosis", 
+                                        "T2", 
+                                        model_gc_biomom_psych_t2_covar$coefficients["biomom_psych_diag", "Estimate"],
+                                        model_gc_biomom_psych_t2_covar$coefficients["biomom_psych_diag", "Pr(>|t|)"],
+                                        rsqpart)
+```
+
+## GC exposure and pregnancy complications
+
+### T0
+
+```{r}
+# get distributions
+table(all_t0$preg_complications, useNA = "ifany")
+
+# fit model with covariates
+rsqpart <- rsq.partial(adj = TRUE, lm(gc_exposure_score ~ preg_complications + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t0, na.action = "na.omit"))$partial.rsq[1]
+model_gc_pregcomp_t0_covar <- summary(lm(gc_exposure_score ~ preg_complications + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t0, na.action = "na.omit"))
+model_gc_pregcomp_t0_covar
+
+# append values to table
+sumtable_gc[nrow(sumtable_gc) + 1,] <- c("Pregnancy complications", 
+                                        "T0", 
+                                        model_gc_pregcomp_t0_covar$coefficients["preg_complications", "Estimate"],
+                                        model_gc_pregcomp_t0_covar$coefficients["preg_complications", "Pr(>|t|)"],
+                                        rsqpart)
+
+```
+
+### T2
+
+```{r}
+# get distributions
+table(all_t2$preg_complications, useNA = "ifany")
+
+# fit model with covariates
+rsqpart <- rsq.partial(adj = TRUE, lm(gc_exposure_score ~ preg_complications + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t2, na.action = "na.omit"))$partial.rsq[1]
+model_gc_pregcomp_t2_covar <- summary(lm(gc_exposure_score ~ preg_complications + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t2, na.action = "na.omit"))
+model_gc_pregcomp_t2_covar
+
+# append values to table
+sumtable_gc[nrow(sumtable_gc) + 1,] <- c("Pregnancy complications", 
+                                        "T2", 
+                                        model_gc_pregcomp_t2_covar$coefficients["preg_complications", "Estimate"],
+                                        model_gc_pregcomp_t2_covar$coefficients["preg_complications", "Pr(>|t|)"],
+                                        rsqpart)
+
+```
+
+## GC exposure and pre-term birth
+
+### T0
+
+```{r}
+# get distributions
+table(all_t0$preg_preterm, useNA = "ifany")
+
+# fit model with covariates
+rsqpart <- rsq.partial(adj = TRUE, lm(gc_exposure_score ~ preg_preterm + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t0, na.action = "na.omit"))$partial.rsq[1]
+model_gc_preterm_t0_covar <- summary(lm(gc_exposure_score ~ preg_preterm + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t0, na.action = "na.omit"))
+model_gc_preterm_t0_covar
+
+# append values to table
+sumtable_gc[nrow(sumtable_gc) + 1,] <- c("Preterm birth", 
+                                        "T0", 
+                                        model_gc_preterm_t0_covar$coefficients["preg_preterm", "Estimate"],
+                                        model_gc_preterm_t0_covar$coefficients["preg_preterm", "Pr(>|t|)"],
+                                        rsqpart)
+
+```
+
+### T2
+
+```{r}
+# get distributions
+table(all_t2$preg_preterm, useNA = "ifany")
+
+# fit model with covariates
+rsqpart <- rsq.partial(adj = TRUE, lm(gc_exposure_score ~ preg_preterm + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t2, na.action = "na.omit"))$partial.rsq[1]
+model_gc_preterm_t2_covar <- summary(lm(gc_exposure_score ~ preg_preterm + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t2, na.action = "na.omit"))
+model_gc_preterm_t2_covar
+
+# append values to table
+sumtable_gc[nrow(sumtable_gc) + 1,] <- c("Preterm birth", 
+                                        "T2", 
+                                        model_gc_preterm_t2_covar$coefficients["preg_preterm", "Estimate"],
+                                        model_gc_preterm_t2_covar$coefficients["preg_preterm", "Pr(>|t|)"],
+                                        rsqpart)
+
+```
+
+
+## GC exposure and maltreatment (yes/no)
+
+### T0
+
+```{r}
+# get distributions
+table(all_t0$Case.Control, useNA = "ifany")
+
+# fit model with covariates
+rsqpart <- rsq.partial(adj = TRUE, lm(gc_exposure_score ~ Case.Control + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t0, na.action = "na.omit"))$partial.rsq[1]
+model_gc_malt_t0_covar <- summary(lm(gc_exposure_score ~ Case.Control + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t0, na.action = "na.omit"))
+model_gc_malt_t0_covar
+
+# append values to table
+sumtable_gc[nrow(sumtable_gc) + 1,] <- c("Maltreatment", 
+                                        "T0", 
+                                        model_gc_malt_t0_covar$coefficients["Case.Control", "Estimate"],
+                                        model_gc_malt_t0_covar$coefficients["Case.Control", "Pr(>|t|)"],
+                                        rsqpart)
+
+```
+
+### T2
+
+```{r}
+# get distributions
+table(all_t2$Case.Control, useNA = "ifany")
+
+# fit model with covariates
+rsqpart <- rsq.partial(adj = TRUE, lm(gc_exposure_score ~ Case.Control + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t2, na.action = "na.omit"))$partial.rsq[1]
+model_gc_malt_t2_covar <- summary(lm(gc_exposure_score ~ Case.Control + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t2, na.action = "na.omit"))
+model_gc_malt_t2_covar
+
+# append values to table
+sumtable_gc[nrow(sumtable_gc) + 1,] <- c("Maltreatment", 
+                                        "T2", 
+                                        model_gc_malt_t2_covar$coefficients["Case.Control", "Estimate"],
+                                        model_gc_malt_t2_covar$coefficients["Case.Control", "Pr(>|t|)"],
+                                        rsqpart)
+
+```
+
+## GC exposure and psychopathology (yes/no)
+
+### T0
+
+```{r}
+# get distributions
+table(all_t0$PAPA_any, useNA = "ifany")
+
+# fit model with covariates
+rsqpart <- rsq.partial(adj = TRUE, lm(gc_exposure_score ~ PAPA_any + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t0, na.action = "na.omit"))$partial.rsq[1]
+model_gc_psych_t0_covar <- summary(lm(gc_exposure_score ~ PAPA_any + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t0, na.action = "na.omit"))
+model_gc_psych_t0_covar
+
+# append values to table
+sumtable_gc[nrow(sumtable_gc) + 1,] <- c("Psychiatric diagnosis", 
+                                        "T0", 
+                                        model_gc_psych_t0_covar$coefficients["PAPA_any", "Estimate"],
+                                        model_gc_psych_t0_covar$coefficients["PAPA_any", "Pr(>|t|)"],
+                                        rsqpart)
+
+```
+
+### T2
+
+```{r}
+# get distributions
+table(all_t2$PAPA_any, useNA = "ifany")
+
+# fit model with covariates
+rsqpart <- rsq.partial(adj = TRUE, lm(gc_exposure_score ~ PAPA_any + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t2, na.action = "na.omit"))$partial.rsq[1]
+model_gc_psych_t2_covar <- summary(lm(gc_exposure_score ~ PAPA_any + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t2, na.action = "na.omit"))
+model_gc_psych_t2_covar
+
+# append values to table
+sumtable_gc[nrow(sumtable_gc) + 1,] <- c("Psychiatric diagnosis", 
+                                        "T2", 
+                                        model_gc_psych_t2_covar$coefficients["PAPA_any", "Estimate"],
+                                        model_gc_psych_t2_covar$coefficients["PAPA_any", "Pr(>|t|)"],
+                                        rsqpart)
+
+```
+
+## GC exposure and stressful life events
+
+### T0
+
+```{r}
+# get distributions
+table(all_t0$life_events_total, useNA = "ifany")
+
+# fit model with covariates
+rsqpart <- rsq.partial(adj = TRUE,lm(gc_exposure_score ~ life_events_total + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t0, na.action = "na.omit"))$partial.rsq[1]
+model_gc_life_total_t0_covar <- summary(lm(gc_exposure_score ~ life_events_total + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t0, na.action = "na.omit"))
+model_gc_life_total_t0_covar
+
+# append values to table
+sumtable_gc[nrow(sumtable_gc) + 1,] <- c("Stressful life events", 
+                                        "T0", 
+                                        model_gc_life_total_t0_covar$coefficients["life_events_total", "Estimate"],
+                                        model_gc_life_total_t0_covar$coefficients["life_events_total", "Pr(>|t|)"],
+                                        rsqpart)
+
+```
+
+### T2
+
+```{r}
+# get distributions
+table(all_t2$life_events_total, useNA = "ifany")
+
+# fit model with covariates
+rsqpart <- rsq.partial(adj = TRUE, lm(gc_exposure_score ~ life_events_total + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t2, na.action = "na.omit"))$partial.rsq[1]
+model_gc_life_total_t2_covar <- summary(lm(gc_exposure_score ~ life_events_total + age + Sex + C1 + C2 + C3 + CD34 + CD14 + Buccal + smoke_exposure_score + alcohol_exposure_score, data = all_t2, na.action = "na.omit"))
+model_gc_life_total_t2_covar
+
+# append values to table
+sumtable_gc[nrow(sumtable_gc) + 1,] <- c("Stressful life events", 
+                                        "T2", 
+                                        model_gc_life_total_t2_covar$coefficients["life_events_total", "Estimate"],
+                                        model_gc_life_total_t2_covar$coefficients["life_events_total", "Pr(>|t|)"],
+                                        rsqpart)
+
+```
+
+
+# Finalize summary table
+
+### Correct p-values for multiple testing
+
+```{r}
+sumtable_gc$p_adjust <- p.adjust(p = sumtable_gc$p, method = "fdr")
+
+```
+
+
+### Export final table
+
+```{r}
+# make sure values are numeric and round
+sumtable_gc <- sumtable_gc %>%
+  mutate(across(c("coef", "p", "p_adjust", "adj_partial_Rsquared"), as.numeric),
+         across(c("coef", "adj_partial_Rsquared"), round, 2),
+         across(c("p", "p_adjust"), round, 3)) %>%
+  relocate(adj_partial_Rsquared, .before = p)
+
+# export
+write.table(format(sumtable_gc, drop0trailing=FALSE), "../03_results/gc_exposure/gc_associations.txt", row.names = FALSE, sep = "\t")
+
+```

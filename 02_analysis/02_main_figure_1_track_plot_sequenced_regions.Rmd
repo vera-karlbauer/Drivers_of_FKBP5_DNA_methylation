@@ -1,0 +1,168 @@
+---
+title: "Script 02 - Drivers of FKBP5 DNA methylation: Plot FKBP5 amplicons"
+author: "Vera N. Karlbauer"
+contact: vera_karlbauer@psych.mpg.de
+date: 25-07-2024
+output: 
+  html_document:
+  toc: true
+  code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose:
+- Script 2 for manuscript on Drivers of FKBP5 DNA methylation.
+- Creates figure 1.
+- Figure 1 = track plot of all sequenced TBS amplicons on FKBP5, overlap with CTCF and GRE binding sites. 
+
+
+# Setup
+
+## Step 0: Load packages
+
+```{r}
+# load packages
+library(rmarkdown)
+library(dplyr)
+library(Gviz)
+
+```
+
+## Step 1: Define amplicon start and end points (+ rs1360780)
+
+```{r}
+# define df
+amplicons <- data.frame(matrix(NA,    # Create empty data frame
+                          nrow = 11,
+                          ncol = 0)) %>%
+  mutate(
+    amplicon = c("Intron 7 enhancer 1", "Intron 7 enhancer 2", "Intron 5 enhancer 1", "Intron 5 enhancer 2",
+                 "Proximal enhancer 1", "Proximal enhancer 2", "Proximal enhancer 3", 
+                 "Intronic enhancer", "5'TAD", "3'TAD", 
+                 "rs1360780"),
+    start = c(35558361, 35558459, 35569680, 35578686,
+              35683267, 35696695, 35697684, 
+              35570168, 35703966, 35490554, 
+              35639694),
+    end = c(35558652, 35558774, 35569946, 35578916,
+            35683538, 35697046, 35697842,
+            35570410, 35704310, 35490990, 
+            35639696),
+    # define color codes
+    color = c("#2C85B2", "#2C85B2", "#B26F2C", "#B26F2C",
+              "#422CB2", "#422CB2", "#422CB2",
+              "#B26F2C", "#B22C2C", "#B22C2C",
+              "#85B22C" ))
+
+# sort by position
+amplicons <- amplicons[order(amplicons$start),]
+
+```
+
+
+# Define tracks: sequenced amplicons, CTCF & GRE binding sites across FKBP5
+
+```{r}
+# load data
+data(geneModels)
+data(cpgIslands)
+
+# set limits
+lim1 <- 35490554
+lim2 <- 35704310 + 30000
+
+## define tracks
+# ideogram track (shows entire chromosome)
+itrack <- IdeogramTrack(genome = "hg19", chromosome = "chr6")
+# axis track (shows coordinates)
+axis_track <- GenomeAxisTrack(add35 = TRUE, add53 = TRUE)
+# NCBI RefSeq trancripts
+grtrack <- UcscTrack(genome = "hg19", chromosome = "chr6", track = "NCBI RefSeq", table = "ncbiRefSeq", from = lim1, to = lim2, trackType = "GeneRegionTrack", gene = "name", transcript = "name", strand = "strand",  rstarts = "exonStarts", rends = "exonEnds", fill = "black", col = "#666666", name = "NCBI RefSeq", background.title = "#666666")
+
+# # GENCODE transcripts
+# grtrack <- UcscTrack(genome = "hg19", chromosome = "chr6", track = "GENCODE V46lift37", table="wgEncodeGencodeBasicV46lift37", from = lim1, to = lim2, trackType = "GeneRegionTrack", gene = "name2", symbol = "name2", transcript = "name",  transcriptAnnotation = "symbol", strand = "strand",  rstarts = "exonStarts", rends = "exonEnds", fill = "black", col = "#666666", name = "GENCODE transcripts", background.title = "#666666")
+# CTCF ChIA-PET 
+ctcf_chia_track <- UcscTrack(genome = "hg19", chromosome = "chr6",
+                             track = "ENCODE 3 TFBS",
+                             table = "encTfChipPkENCFF833FTF", 
+                             from = lim1, to = lim2,
+                             trackType = "AnnotationTrack", 
+                             start = "chromStart", end = "chromEnd", 
+                             id = "name", shape = "box", fill = "black", col = "#666666", 
+                             name = "CTCF ChIA-PET", showTitle = TRUE, 
+                             background.title = "#666666")
+# CTCF binding sites
+ctcf_track <- UcscTrack(genome = "hg19", chromosome = "chr6", track = "ENCODE 3 TFBS", 
+                        table = "encTfChipPkENCFF030BPR", from = lim1, to = lim2,
+                        trackType = "AnnotationTrack", 
+                        start = "chromStart", end = "chromEnd", 
+                        id = "name", shape = "box", fill = "black", col = "#666666", 
+                        name = "CTCF ChIP-Seq", showTitle = TRUE, background.title = "#666666")
+# Glucocorticoid-responsive elements
+gre_track <- UcscTrack(genome = "hg19", chromosome = "chr6",
+                             track = "ENCODE 3 TFBS",
+                             table = "encTfChipPkENCFF080RMP", 
+                             from = lim1, to = lim2,
+                             trackType = "AnnotationTrack", 
+                             start = "chromStart", end = "chromEnd", 
+                             id = "name", shape = "box", fill = "black", col = "#666666", 
+                             name = "GR ChIP-Seq", showTitle = TRUE, background.title ="#666666")
+# track sizes
+displayPars(grtrack) <- list(size=1)
+displayPars(ctcf_chia_track) <- list(size=3)
+displayPars(ctcf_track) <- list(size=2)
+displayPars(gre_track) <- list(size=3)
+# TBS amplicons overlay
+amplicons_ht <- HighlightTrack(trackList = c(grtrack, ctcf_chia_track, ctcf_track, gre_track), 
+                    start = amplicons$start, 
+                    end = amplicons$end, 
+                    chromosome = "chr6", 
+                    name = "TBS amplicons", 
+                    inBackground = FALSE, 
+                    col = amplicons$color, 
+                    fill = amplicons$color,
+                    alpha = 0.4, showTitle = TRUE, background.title = "#666666")
+# TBS amplicons annotation
+amplicons_anno <- AnnotationTrack(start = amplicons$start, 
+                                  end = amplicons$end,
+                                  chromosome = "chr6", 
+                                  name = "TBS amplicons", 
+                                  genome = "hg19",
+                                  shape = "box", 
+                                  group = amplicons$amplicon, 
+                                  feature = amplicons$amplicon,
+                                  groupAnnotation = "group", 
+                                  just.group = "right",
+                                  "3'TAD" = amplicons$color[1],
+                                  "Intron 7 enhancer 1" = amplicons$color[2],
+                                  "Intron 7 enhancer 2" = amplicons$color[3],
+                                  "Intron 5 enhancer 1" = amplicons$color[4],
+                                  "Intronic enhancer" = amplicons$color[5],
+                                  "Intron 5 enhancer 2" = amplicons$color[6],
+                                  "rs1360780" = amplicons$color[7],
+                                  "Proximal enhancer 1" = amplicons$color[8],
+                                  "Proximal enhancer 2" = amplicons$color[9],
+                                  "Proximal enhancer 3" = amplicons$color[10],
+                                   "5'TAD" = amplicons$color[11], 
+                                  col = NA, 
+                                  id = amplicons$amplicon, background.title = "#666666")
+
+```
+
+# Plot & export defined tracks
+
+```{r}
+# # initialize graphics device
+png(file = "../04_figures/figure_1_track_plot_amplicons.png", height = 1556, width = 2518, units = 'px', res = 300)
+
+# plot CpGs covered across full range
+plotTracks(trackList = list(itrack, axis_track, amplicons_ht, amplicons_anno), from = lim1, to = lim2)
+
+# shut off graphics device
+dev.off()
+```
+
+
