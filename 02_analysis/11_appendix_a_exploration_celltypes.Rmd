@@ -1,0 +1,159 @@
+---
+title: 'Appendix A: Exploration of correlation between cell type estimations'
+author: "Vera N. Karlbauer"
+contact: vera_karlbauer@psych.mpg.de
+date: "2024-09-30"
+output:
+    html_document:
+    toc: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Purpose:
+- Script 11 for manuscript on Drivers of FKBP5 DNA methylation.
+- Explores accuracy of Smith et al. (2014) method for saliva cell type estimation.  
+- Runs cell type estimation based on Houseman algorithm and Zheng reference panel for saliva cell type estimation in BerlinLCS sample and compares resulting cell type proportions with original estimation.   
+- Creates supplementary figure A1.
+- Original cell type estimation based on Smith et al. (204), DOI: 10.1002/ajmg.b.32278 
+- Zheng epithelial reference panel: Zheng et al. (2018), DOI: 10.2217/epi-2018-0037
+
+# Setup
+
+## Step 1: Load packages
+
+```{r}
+# load packages
+library(rmarkdown)
+library(dplyr)
+library(tibble)
+library(tidyr)
+library(BiocManager)
+library(EpiDISH)
+library(corrplot)
+
+```
+
+
+## Step 2: Load data
+```{r}
+# BerlinLCS pre-processed EPICs
+load("../../01_data/01_raw/funnorm_npc4_2b_beta_values_nodupl.rda")
+
+# original cell types
+load("../../01_data/02_proc/all_time.rda")
+
+```
+
+## Step 3: Pre-process data
+
+```{r}
+# rename Smith-based cell types
+all_time <- all_time %>%
+  rename(CD14_Smith_Lowe = CD14,
+         CD34_Smith_Lowe = CD34,
+         Buccal_Smith_Lowe = Buccal)
+```
+
+# Cell type estimation with epithelial tissue reference panel (epiDISH)
+
+## Estimate cell types
+
+```{r}
+# load reference
+data(centEpiFibIC.m)
+
+# estimate cell types
+celltypes_saliva_zheng <- epidish(beta.m = beta_value, ref.m = centEpiFibIC.m, method = "RPC")$estF
+
+# rename columns
+celltypes_saliva_zheng <- as.data.frame(celltypes_saliva_zheng) %>%
+  rownames_to_column(var = "MethID") %>%
+  dplyr::rename(Epithelial_Zheng = Epi,
+         Fibroblasts_Zheng = Fib,
+         Immune_Zheng = IC)
+# append to BerlinLCS dataframe
+all_time <- left_join(all_time, celltypes_saliva_zheng, by = "MethID")
+
+```
+
+## Examine proportions
+
+```{r}
+all_time %>%
+  group_by(Time) %>%
+  summarise(mean_epithelial = mean(Epithelial_Zheng), mean_immune = mean(Immune_Zheng), mean_fibroblasts = mean(Fibroblasts_Zheng)) %>%
+  round(digits = 4)
+
+```
+
+## Correlate proportions with Smith reference panel
+
+```{r}
+## Buccal (Smith) ~ Epithelial (Zheng)
+# T0
+cor.test(filter(all_time, Time == 0)$Buccal_Smith_Lowe, filter(all_time, Time == 0)$Epithelial_Zheng, method = "spearman")
+# T2
+cor.test(filter(all_time, Time == 2)$Buccal_Smith_Lowe, filter(all_time, Time == 2)$Epithelial_Zheng, method = "spearman")
+
+## CD34 (Smith) ~ Immune (Zheng)
+# T0
+cor.test(filter(all_time, Time == 0)$CD34_Smith_Lowe, filter(all_time, Time == 0)$Immune_Zheng, method = "spearman")
+# T2
+cor.test(filter(all_time, Time == 2)$CD34_Smith_Lowe, filter(all_time, Time == 2)$Immune_Zheng, method = "spearman")
+
+```
+
+## Visualize correlations
+
+```{r}
+# filter data
+celltypes_all <- pivot_wider(all_time,
+                               id_cols = Subject,
+                               names_from = Time,
+                               values_from = c(Buccal_Smith_Lowe, CD34_Smith_Lowe,
+                                               Epithelial_Zheng, Immune_Zheng),
+                               names_sep = "_T") %>%
+  select(-Subject)
+
+# create correlation 
+corrmat_zheng = cor(celltypes_all, use = "na.or.complete", method = "spearman")
+corrmat_zheng <- corrmat_zheng[c("Buccal_Smith_Lowe_T0", "CD34_Smith_Lowe_T0", 
+                                 "Buccal_Smith_Lowe_T2", "CD34_Smith_Lowe_T2"), 
+                               c("Epithelial_Zheng_T0", "Immune_Zheng_T0", "Epithelial_Zheng_T2", "Immune_Zheng_T2")]
+# calculate p-values
+pmat_zheng = cor.mtest(as.matrix(celltypes_all), conf.level = 0.95, method = "spearman", alternative = "two.sided")
+pmat_zheng <- pmat_zheng$p[c("Buccal_Smith_Lowe_T0", "CD34_Smith_Lowe_T0", 
+                                 "Buccal_Smith_Lowe_T2", "CD34_Smith_Lowe_T2"), 
+                               c("Epithelial_Zheng_T0", "Immune_Zheng_T0", "Epithelial_Zheng_T2", "Immune_Zheng_T2")]
+
+# initialize graphics device
+tiff(file = "../04_figures/figure_a1_saliva_celltypes_corrplot.png", height = 7, width = 7, units = 'in', res = 700)
+
+# plot
+corrplot(corr = corrmat_zheng,
+         method = "shade",
+         type = "full",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.cex = 0.7,
+         number.cex = 0.7,
+         cl.cex = 0.7,
+         cl.pos = "b",
+         p.mat = pmat_zheng,
+         sig.level = 0.05,
+         insig = "label_sig",
+         pch = "     *",
+         pch.col = "orange",
+         pch.cex = 2,
+         mar = c(0, 0, 1, 0))
+
+# shut off graphics device
+dev.off()
+
+```
+
