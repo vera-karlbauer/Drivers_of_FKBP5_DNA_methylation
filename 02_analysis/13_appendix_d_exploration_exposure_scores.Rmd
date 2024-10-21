@@ -1,9 +1,8 @@
 ---
-title: "Appendix A: Exploration of correlations between exposure scores and maltreatment"
+title: "Appendix D: Exploration of correlations between exposure scores and maltreatment"
 author: "Vera N. Karlbauer"
-date: "`r Sys.Date()`"
 contact: vera_karlbauer@psych.mpg.de
-date: 02-08-2024
+date: "2024-08-02"
 output:
     html_document:
     toc: true
@@ -15,10 +14,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # Purpose:
-- Script 11 for manuscript on Drivers of FKBP5 DNA methylation. 
+- Script 13 for manuscript on Drivers of FKBP5 DNA methylation. 
 - Examine interactions between maltreatment and epigenetic prenatal alcohol exposure score on the epigenetic glucocorticoid exposure score at T0.  
 - Statistically test for interaction effect in linear model, adjusted for the usual covariates age, sex, genetic components (C1, C2, C3), cell type counts (CD34, CD14, buccal) and prenatal smoke exposure.  
-- Perform tercile split into high, medium, and low alcohol exposure and descriptively plot interaction between maltreatment and alcohol exposure on glucocorticoid exposure (supplementary figure A1).
+- Perform tercile split into high, medium, and low alcohol exposure and descriptively plot interaction between maltreatment and alcohol exposure on glucocorticoid exposure (supplementary figure D1).
 
 
 # Setup
