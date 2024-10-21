@@ -1,9 +1,8 @@
 ---
 title: 'Differential methylation: Genotype (rs1360780)'
 author: "Vera N. Karlbauer"
-date: "`r Sys.Date()`"
 contact: vera_karlbauer@psych.mpg.de
-date: 02-08-2024
+date: "2024-08-02"
 output:
     html_document:
     toc: true
