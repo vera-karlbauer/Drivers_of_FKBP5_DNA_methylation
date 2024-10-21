@@ -1,0 +1,285 @@
+---
+title: 'Appendix C: Maltreatment effects controlled for SES'
+author: "Vera N. Karlbauer"
+date: "2024-09-24"
+contact: vera_karlbauer@psych.mpg.de
+output:
+    html_document:
+    toc: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose:
+- Script 12 for manuscript on Drivers of FKBP5 DNA methylation. 
+- Repeat all analyses from script 05 (effects of childhood maltreatment on FKBP5 DNA methylation) but correct for SES as additional covariate.
+- Analyzes effects of maltreatment on FKBP5 methylation via linear regression. 
+- Runs linear models for T0, T2, and over time including time and subject effects.  
+- Exports results and publication tables (supplementary table C1).  
+- The functions looping the linear model over 49 CpGs, specifying all relevant covariates, and providing a dataframe with adjusted R squared, regression coefficients, p-values, and fdr-corrected p-values are specified in the script 01_functions/02_appendix_c_functions_fkbp5.R .  
+- All analyses are corrected for age, sex, genetic components (C1, C2, C3), cell type counts (CD34, CD14, buccal), prenatal smoke exposure, prenatal alcohol exposure, and SES. 
+
+# Setup
+
+## Step 0: Load packages
+
+```{r}
+# load packages
+library(rmarkdown)
+library(dplyr)
+library(lme4)
+library(stringr)
+library(rsq)
+library(finalfit)
+library(writexl)
+library(haven)
+library(labelled)
+
+```
+
+
+## Step 1: Source auxiliary functions
+
+```{r}
+source("../01_functions/02_appendix_c_functions_fkbp5.R")
+
+```
+
+
+## Step 2: Load data
+
+```{r}
+# set temporary wd for chunk to folder with preprocessed data
+setwd("../../01_data/02_proc")
+
+# all_t0 = methylation & covariates for T0
+load("all_t0.rda")
+
+# all_t2 = methylation & covariates for T2
+load("all_t2.rda")
+
+# all_time = methylation & covariates for T0 & T2
+load("all_time.rda")
+
+# additional phenotypes (includes SES)
+psych_pheno <- read_sav("../01_raw/LCS_T0T4_TP2_Feb2019_fullversion_long-2.sav")
+
+```
+## Step 3: Process data
+
+```{r}
+## phenotypes
+# select relevant variables
+psych_pheno <- select(psych_pheno,
+                      SUBJECT,
+                      VISIT,
+                      SES
+                      )
+# delete labels
+psych_pheno <- labelled::remove_labels(psych_pheno)
+psych_pheno <- labelled::remove_val_labels(psych_pheno)
+
+# subject as character
+psych_pheno$SUBJECT <- as.character(psych_pheno$SUBJECT)
+
+```
+
+
+### Step 4: Create joint dataframe
+
+```{r}
+# join dataframes
+all_t0 <- left_join(all_t0, filter(psych_pheno, VISIT == 0), by = c("Subject" = "SUBJECT"))
+all_t2 <- left_join(all_t2, filter(psych_pheno, VISIT == 2), by = c("Subject" = "SUBJECT"))
+all_time <- left_join(all_time, psych_pheno, by = c("Subject" = "SUBJECT", "Time" = "VISIT"))
+
+```
+
+
+# Analysis
+
+## SES-corrected maltreatment effects at T0
+
+### Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and maltreatment as main predictor over 49 CpGs
+diffmeth_ses_malt_t0 <- ses_loop_lm_simple(data = all_t0, predictor_name = "Case.Control")
+
+# count number of uncorrected significant hits
+count(diffmeth_ses_malt_t0, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_ses_malt_t0, sig_corrected)
+
+## export results
+# round values
+diffmeth_ses_malt_t0 <- diffmeth_ses_malt_t0 %>%
+  mutate(across(c("adj.R", "partial_adj.R", "coef"), round, 2),
+         # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+# export
+write.table(diffmeth_ses_malt_t0, "../03_results/maltreatment_ses/results_diffmeth_ses_malt_t0.txt", row.names = FALSE, sep = "\t")
+
+```
+
+### Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_ses_malt_t0 <- diffmeth_ses_malt_t0 %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, timepoint and functional region
+pubtable_diffmeth_ses_malt_t0 <- mutate(pubtable_diffmeth_ses_malt_t0,
+                                 PCR = str_extract(pubtable_diffmeth_ses_malt_t0$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_ses_malt_t0$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                 timepoint = rep("T0", nrow(pubtable_diffmeth_ses_malt_t0))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_ses_malt_t0 <- select(pubtable_diffmeth_ses_malt_t0,
+                                    functional_region, PCR, position, timepoint, adj.R, coef, partial_adj.R, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_ses_malt_t0, "../05_tables/maltreatment_ses/pubtable_results_diffmeth_ses_malt_t0.xlsx", col_names = TRUE)
+
+```
+
+## Maltreatment effects at T2
+
+### Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and maltreatment as main predictor over 49 CpGs
+diffmeth_ses_malt_t2 <- ses_loop_lm_simple(data = all_t2, predictor_name = "Case.Control")
+
+# count number of uncorrected significant hits
+count(diffmeth_ses_malt_t2, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_ses_malt_t2, sig_corrected)
+
+## export results
+# round values
+diffmeth_ses_malt_t2 <- diffmeth_ses_malt_t2 %>%
+  mutate(across(c("adj.R", "partial_adj.R", "coef"), round, 2),
+         # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+
+# export
+write.table(diffmeth_ses_malt_t2, "../03_results/maltreatment_ses/results_diffmeth_ses_malt_t2.txt", row.names = FALSE, sep = "\t")
+
+```
+
+### Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_ses_malt_t2 <- diffmeth_ses_malt_t2 %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_ses_malt_t2 <- mutate(pubtable_diffmeth_ses_malt_t2,
+                                 PCR = str_extract(pubtable_diffmeth_ses_malt_t2$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_ses_malt_t2$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                 timepoint = rep("T2", nrow(pubtable_diffmeth_ses_malt_t2))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_ses_malt_t2 <- select(pubtable_diffmeth_ses_malt_t2,
+                                    functional_region, PCR, position, timepoint, adj.R, coef, partial_adj.R, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_ses_malt_t2, "../05_tables/maltreatment_ses/pubtable_results_diffmeth_ses_malt_t2.xlsx", col_names = TRUE)
+
+```
+
+## Maltreatment effects over time
+
+### Run statistical analysis
+
+```{r}
+# loop linear model with pre-specified covariates and maltreatment as main predictor over 49 CpGs
+diffmeth_ses_malt_time <- ses_loop_lm_time(data = all_time, predictor_name = "Case.Control")
+
+# count number of uncorrected significant hits
+count(diffmeth_ses_malt_time, sig_uncorrected)
+
+# count number of fdr-corrected significant hits
+count(diffmeth_ses_malt_time, sig_corrected)
+
+## export results
+# round values
+diffmeth_ses_malt_time <- diffmeth_ses_malt_time %>%
+  mutate(across(c("AIC", "p", "coef"), round, 2),
+         # round p-values
+  p = case_when(p >= 0.001 ~ as.character(round_tidy(p, 3)),
+                p < 0.001 & p >= 0.0001 ~ as.character(format(round_tidy(p, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"),
+  p_adjust = case_when(p_adjust >= 0.001 ~ as.character(round_tidy(p_adjust, 3)),
+                p_adjust < 0.001 & p_adjust >= 0.0001 ~ as.character(format(round(p_adjust, 4), scientific = FALSE)),
+                TRUE ~ "<0.001"))
+# export
+write.table(diffmeth_ses_malt_time, "../03_results/maltreatment_ses/results_diffmeth_ses_malt_time.txt", row.names = FALSE, sep = "\t")
+
+```
+
+### Prepare results table for publication
+
+```{r}
+# create new table with significant hits
+pubtable_diffmeth_ses_malt_time <- diffmeth_ses_malt_time %>%
+  filter(sig_uncorrected == "yes")
+
+# add PCR name, position, and functional region
+pubtable_diffmeth_ses_malt_time <- mutate(pubtable_diffmeth_ses_malt_time,
+                                 PCR = str_extract(pubtable_diffmeth_ses_malt_time$CpG, ".*(?=_3)"),
+                                 position = as.numeric(str_extract(pubtable_diffmeth_ses_malt_time$CpG , "([3]{1}[0-9]{7})")),
+                                 functional_region = case_when(
+                                   PCR == "CTCF_PCR_17" ~ "3'TAD",
+                                   PCR == "CTCF_PCR_5.1" ~ "5'TAD",
+                                   PCR == "FKBP5_PCR_12" | PCR == "FKBP5_PCR_16" | PCR == "FKBP5_PCR_17" | PCR == "FKBP5_PCR_18" ~ "Proximal Enhancer",
+                                   PCR == "FKBP5_int5_PCR_2" | PCR == "FKBP5_int5_PCR_3" ~ "Intron 5 Enhancer",
+                                   PCR == "FKBP5_int7_PCR_1.2" | PCR == "FKBP5_int7_PCR_1.4" ~ "Intron 7 Enhancer",
+                                   TRUE ~ NA_character_),
+                                 timepoint = rep("T0->T2", nrow(pubtable_diffmeth_ses_malt_time))
+                                 )
+
+# select relevant variables
+pubtable_diffmeth_ses_malt_time <- select(pubtable_diffmeth_ses_malt_time,
+                                    functional_region, PCR, position, timepoint, AIC, coef, p, p_adjust)
+
+# export
+write_xlsx(pubtable_diffmeth_ses_malt_time, "../05_tables/maltreatment_ses/pubtable_results_diffmeth_ses_malt_time.xlsx", col_names = TRUE)
+
+```
+
+
