@@ -1,7 +1,7 @@
 ### Drivers of FKBP5 DNA methylation: source functions ###
 # Author: Vera N. Karlbauer
 # Contact: vera_karlbauer@psych.mpg.de
-# Date created: 25-07-20204
+# Date created: "2024-07-25"
 # Purpose: Source functions for differential DNA methylation analysis with predictor(s) of interest, used in scripts 05-08.
 
 ### Function 1: Loop simple linear model over 49 GpGs & return results
