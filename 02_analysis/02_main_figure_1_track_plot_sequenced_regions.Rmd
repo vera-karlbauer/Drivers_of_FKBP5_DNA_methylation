@@ -2,7 +2,7 @@
 title: "Script 02 - Drivers of FKBP5 DNA methylation: Plot FKBP5 amplicons"
 author: "Vera N. Karlbauer"
 contact: vera_karlbauer@psych.mpg.de
-date: 25-07-2024
+date: "2024-07-25"
 output: 
   html_document:
   toc: true
@@ -15,8 +15,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Purpose:
 - Script 2 for manuscript on Drivers of FKBP5 DNA methylation.
-- Creates figure 1.
-- Figure 1 = track plot of all sequenced TBS amplicons on FKBP5, overlap with CTCF and GRE binding sites. 
+- Creates figure 1, panels a- .
+- Panels a)-e) = track plot of all sequenced TBS amplicons on FKBP5, overlap with CTCF and GRE binding sites. 
+- Panel f)-n) = exact positions of sequenced CpGs via HAM-TBS (top track) and via EPICv1 microarray (bottom track) per amplicon.  
 
 
 # Setup
@@ -28,6 +29,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(rmarkdown)
 library(dplyr)
 library(Gviz)
+library(tibble)
+library(stringr)
 
 ```
 
@@ -62,8 +65,43 @@ amplicons <- amplicons[order(amplicons$start),]
 
 ```
 
+## Step 2: Import CpG names, start, end, and amplicon (from results of script 05)
 
-# Define tracks: sequenced amplicons, CTCF & GRE binding sites across FKBP5
+```{r}
+# import methylation data at T0 (for CpG annotation)
+load("../../01_data/02_proc/methylation_perc.t0.rda")
+
+# create anotation
+tbs_annotation <- as.data.frame(methylation_perc.t0) %>%
+  rownames_to_column(var = "CpG") %>%
+  select(CpG) %>%
+  # extract chr position from CpG names
+  mutate(
+    amplicon = case_when(startsWith(CpG, "FKBP5_int7_PCR_1.2")  ~ "Intron 7 enhancer 1",
+                         startsWith(CpG, "FKBP5_int7_PCR_1.4") ~ "Intron 7 enhancer 2",
+                         startsWith(CpG, "FKBP5_int5_PCR_2") ~ "Intron 5 enhancer 1",
+                         startsWith(CpG, "FKBP5_int5_PCR_3") ~ "Intron 5 enhancer 2",
+                         startsWith(CpG, "FKBP5_PCR_12") ~ "Proximal enhancer 1",
+                         startsWith(CpG, "FKBP5_PCR_17") ~ "Proximal enhancer 2",
+                         startsWith(CpG, "FKBP5_PCR_18") ~ "Proximal enhancer 3",
+                         startsWith(CpG, "FKBP5_cg14284211") ~ "Intronic enhancer",
+                         startsWith(CpG, "CTCF_PCR_5.1") ~ "5'TAD",
+                         startsWith(CpG, "CTCF_PCR_17") ~ "3'TAD",
+                         TRUE ~ NA_character_
+                          ),
+    pos = as.numeric(str_extract(tbs_annotation$CpG , "([3]{1}[0-9]{7})")),
+    # set start, end, and chromosome
+    start = pos,
+    end = start + 2,
+    chr = rep("chr6", nrow(tbs_annotation)),
+  ) %>%
+  arrange(pos)
+
+```
+
+
+# Create up panels a-e)
+## Define tracks: sequenced amplicons, CTCF & GRE binding sites across FKBP5
 
 ```{r}
 # load data
@@ -80,10 +118,8 @@ itrack <- IdeogramTrack(genome = "hg19", chromosome = "chr6")
 # axis track (shows coordinates)
 axis_track <- GenomeAxisTrack(add35 = TRUE, add53 = TRUE)
 # NCBI RefSeq trancripts
-grtrack <- UcscTrack(genome = "hg19", chromosome = "chr6", track = "NCBI RefSeq", table = "ncbiRefSeq", from = lim1, to = lim2, trackType = "GeneRegionTrack", gene = "name", transcript = "name", strand = "strand",  rstarts = "exonStarts", rends = "exonEnds", fill = "black", col = "#666666", name = "NCBI RefSeq", background.title = "#666666")
+grtrack <- UcscTrack(genome = "hg19", chromosome = "chr6", track = "NCBI RefSeq", table = "ncbiRefSeq", from = lim1, to = lim2, trackType = "GeneRegionTrack", gene = "name", transcript = "name", strand = "strand",  rstarts = "exonStarts", rends = "exonEnds", fill = "black", col = "#666666", name = "a) NCBI RefSeq transcripts", background.title = "#666666")
 
-# # GENCODE transcripts
-# grtrack <- UcscTrack(genome = "hg19", chromosome = "chr6", track = "GENCODE V46lift37", table="wgEncodeGencodeBasicV46lift37", from = lim1, to = lim2, trackType = "GeneRegionTrack", gene = "name2", symbol = "name2", transcript = "name",  transcriptAnnotation = "symbol", strand = "strand",  rstarts = "exonStarts", rends = "exonEnds", fill = "black", col = "#666666", name = "GENCODE transcripts", background.title = "#666666")
 # CTCF ChIA-PET 
 ctcf_chia_track <- UcscTrack(genome = "hg19", chromosome = "chr6",
                              track = "ENCODE 3 TFBS",
@@ -92,7 +128,7 @@ ctcf_chia_track <- UcscTrack(genome = "hg19", chromosome = "chr6",
                              trackType = "AnnotationTrack", 
                              start = "chromStart", end = "chromEnd", 
                              id = "name", shape = "box", fill = "black", col = "#666666", 
-                             name = "CTCF ChIA-PET", showTitle = TRUE, 
+                             name = "b) CTCF ChIA-PET", showTitle = TRUE, 
                              background.title = "#666666")
 # CTCF binding sites
 ctcf_track <- UcscTrack(genome = "hg19", chromosome = "chr6", track = "ENCODE 3 TFBS", 
@@ -100,7 +136,7 @@ ctcf_track <- UcscTrack(genome = "hg19", chromosome = "chr6", track = "ENCODE 3 
                         trackType = "AnnotationTrack", 
                         start = "chromStart", end = "chromEnd", 
                         id = "name", shape = "box", fill = "black", col = "#666666", 
-                        name = "CTCF ChIP-Seq", showTitle = TRUE, background.title = "#666666")
+                        name = "c) CTCF ChIP-Seq", showTitle = TRUE, background.title = "#666666")
 # Glucocorticoid-responsive elements
 gre_track <- UcscTrack(genome = "hg19", chromosome = "chr6",
                              track = "ENCODE 3 TFBS",
@@ -109,7 +145,7 @@ gre_track <- UcscTrack(genome = "hg19", chromosome = "chr6",
                              trackType = "AnnotationTrack", 
                              start = "chromStart", end = "chromEnd", 
                              id = "name", shape = "box", fill = "black", col = "#666666", 
-                             name = "GR ChIP-Seq", showTitle = TRUE, background.title ="#666666")
+                             name = "d) GR ChIP-Seq", showTitle = TRUE, background.title ="#666666")
 # track sizes
 displayPars(grtrack) <- list(size=1)
 displayPars(ctcf_chia_track) <- list(size=3)
@@ -129,7 +165,7 @@ amplicons_ht <- HighlightTrack(trackList = c(grtrack, ctcf_chia_track, ctcf_trac
 amplicons_anno <- AnnotationTrack(start = amplicons$start, 
                                   end = amplicons$end,
                                   chromosome = "chr6", 
-                                  name = "TBS amplicons", 
+                                  name = "e) HAM-TBS amplicons", 
                                   genome = "hg19",
                                   shape = "box", 
                                   group = amplicons$amplicon, 
@@ -152,10 +188,10 @@ amplicons_anno <- AnnotationTrack(start = amplicons$start,
 
 ```
 
-# Plot & export defined tracks
+## Plot & export defined tracks
 
 ```{r}
-# # initialize graphics device
+# initialize graphics device
 png(file = "../04_figures/figure_1_track_plot_amplicons.png", height = 1556, width = 2518, units = 'px', res = 300)
 
 # plot CpGs covered across full range
@@ -165,4 +201,298 @@ plotTracks(trackList = list(itrack, axis_track, amplicons_ht, amplicons_anno), f
 dev.off()
 ```
 
+# Create panels f-n)
 
+## Set up tracks
+
+```{r}
+# HAM-TBS CpGs
+ham_tbs_track <- AnnotationTrack(start = tbs_annotation$start, 
+                                  end = tbs_annotation$end,
+                                  chromosome = "chr6", 
+                                  name = "HAM-TBS CpGs", 
+                                  genome = "hg19",
+                                  shape = "box", 
+                                  group = tbs_annotation$CpG, 
+                                  feature = tbs_annotation$CpG,
+                                  groupAnnotation = "group", 
+                                  just.group = "right",
+                                  col = "#666666", 
+                                  fill = "black",
+                                  id = amplicons$CpG, 
+                                 background.title = "#666666", 
+                                 stacking = "dense")
+
+# EPICv1 CpGs
+epic_track <- UcscTrack(genome = "hg19", chromosome = "chr6",
+                             track = "Array Probesets",
+                             table = "snpArrayIllumina850k", 
+                             from = lim1, to = lim2,
+                             trackType = "AnnotationTrack", 
+                             start = "chromStart", end = "chromEnd", 
+                             id = "name", shape = "box", fill = "black", col = "#666666", 
+                             name = "EPICv1 CpGs", showTitle = TRUE, background.title ="#666666")
+```
+
+## Plot and export tracks per amplicon
+
+# 3'TAD
+
+```{r}
+# set up amplicon-specific plotting parameters
+current_amp = "3'TAD"
+start = filter(amplicons, amplicon == current_amp)$start
+end = filter(amplicons, amplicon == current_amp)$end
+color = filter(amplicons, amplicon == current_amp)$color
+bckgrd = "#E0ABAB"
+ham_tbs_track@dp@pars$fill = color
+axis_track@dp@pars$fontcolor = "black"
+
+# initialize graphics device
+png(file = "../04_figures/details_trackplot_3tad.png", height = 1556, width = 2518, units = 'px', res = 300)
+
+# plot CpGs covered across full range
+plotTracks(trackList = list(axis_track, ham_tbs_track, epic_track), 
+           from = start, to = end, 
+           col = color, background.title = color, 
+           background.panel = bckgrd,
+           col.main = color,
+           cex.main = 2,
+           main = "f) 3'TAD")
+
+# shut off graphics device
+dev.off()
+
+```
+
+# Intron 7 enhancer 1
+
+```{r}
+# set up amplicon-specific plotting parameters
+current_amp = "Intron 7 enhancer 1"
+start = filter(amplicons, amplicon == current_amp)$start
+end = filter(amplicons, amplicon == current_amp)$end
+color = filter(amplicons, amplicon == current_amp)$color
+bckgrd = "#ABCEE0"
+ham_tbs_track@dp@pars$fill = color
+axis_track@dp@pars$fontcolor = "black"
+
+# initialize graphics device
+png(file = "../04_figures/details_trackplot_i7_1.png", height = 1556, width = 2518, units = 'px', res = 300)
+
+# plot CpGs covered across full range
+plotTracks(trackList = list(axis_track, ham_tbs_track, epic_track), 
+           from = start, to = end, 
+           col = color, background.title = color, 
+           background.panel = bckgrd,
+           col.main = color,
+           cex.main = 2,
+           main = "g) Intron 7 enhancer 1")
+
+# shut off graphics device
+dev.off()
+
+```
+
+# Intron 7 enhancer 2
+
+```{r}
+# set up amplicon-specific plotting parameters
+current_amp = "Intron 7 enhancer 2"
+start = filter(amplicons, amplicon == current_amp)$start
+end = filter(amplicons, amplicon == current_amp)$end
+color = filter(amplicons, amplicon == current_amp)$color
+bckgrd = "#ABCEE0"
+ham_tbs_track@dp@pars$fill = color
+axis_track@dp@pars$fontcolor = "black"
+
+# initialize graphics device
+png(file = "../04_figures/details_trackplot_i7_2.png", height = 1556, width = 2518, units = 'px', res = 300)
+
+# plot CpGs covered across full range
+plotTracks(trackList = list(axis_track, ham_tbs_track, epic_track), 
+           from = start, to = end, 
+           col = color, background.title = color, 
+           background.panel = bckgrd,
+           col.main = color,
+           cex.main = 2,
+           main = "h) Intron 7 enhancer 2")
+
+# shut off graphics device
+dev.off()
+
+```
+
+# Intron 5 enhancer 1 + intronic enhancer
+
+```{r}
+# set up amplicon-specific plotting parameters
+current_amp = "Intron 5 enhancer 1"
+start = filter(amplicons, amplicon == current_amp)$start
+end = filter(amplicons, amplicon == "Intronic enhancer")$end
+color = filter(amplicons, amplicon == current_amp)$color
+bckgrd = "#E0C5AB"
+ham_tbs_track@dp@pars$fill = color
+axis_track@dp@pars$fontcolor = "black"
+
+# initialize graphics device
+png(file = "../04_figures/details_trackplot_i5_1.png", height = 1556, width = 2518, units = 'px', res = 300)
+
+# plot CpGs covered across full range
+plotTracks(trackList = list(axis_track, ham_tbs_track, epic_track), 
+           from = start, to = end, 
+           col = color, background.title = color, 
+           background.panel = bckgrd,
+           col.main = color,
+           cex.main = 2,
+           main = "i) Intron 5 enhancer 1 + intronic enhancer")
+
+# shut off graphics device
+dev.off()
+
+```
+
+# Intron 5 enhancer 2
+
+```{r}
+# set up amplicon-specific plotting parameters
+current_amp = "Intron 5 enhancer 2"
+start = filter(amplicons, amplicon == current_amp)$start
+end = filter(amplicons, amplicon == current_amp)$end
+color = filter(amplicons, amplicon == current_amp)$color
+bckgrd = "#E0C5AB"
+ham_tbs_track@dp@pars$fill = color
+axis_track@dp@pars$fontcolor = "black"
+
+# initialize graphics device
+png(file = "../04_figures/details_trackplot_i5_2.png", height = 1556, width = 2518, units = 'px', res = 300)
+
+# plot CpGs covered across full range
+plotTracks(trackList = list(axis_track, ham_tbs_track, epic_track), 
+           from = start, to = end, 
+           col = color, background.title = color, 
+           background.panel = bckgrd,
+           col.main = color,
+           cex.main = 2,
+           main = "j) Intron 5 enhancer 2")
+
+# shut off graphics device
+dev.off()
+
+```
+
+# Proximal enhancer 1
+
+```{r}
+# set up amplicon-specific plotting parameters
+current_amp = "Proximal enhancer 1"
+start = filter(amplicons, amplicon == current_amp)$start
+end = filter(amplicons, amplicon == current_amp)$end
+color = filter(amplicons, amplicon == current_amp)$color
+bckgrd = "#B3ABE0"
+ham_tbs_track@dp@pars$fill = color
+axis_track@dp@pars$fontcolor = "black"
+
+# initialize graphics device
+png(file = "../04_figures/details_trackplot_prox_1.png", height = 1556, width = 2518, units = 'px', res = 300)
+
+# plot CpGs covered across full range
+plotTracks(trackList = list(axis_track, ham_tbs_track, epic_track), 
+           from = start, to = end, 
+           col = color, background.title = color, 
+           background.panel = bckgrd,
+           col.main = color,
+           cex.main = 2,
+           main = "k) Proximal enhancer 1")
+
+# shut off graphics device
+dev.off()
+
+```
+
+# Proximal enhancer 2
+
+```{r}
+# set up amplicon-specific plotting parameters
+current_amp = "Proximal enhancer 2"
+start = filter(amplicons, amplicon == current_amp)$start
+end = filter(amplicons, amplicon == current_amp)$end
+color = filter(amplicons, amplicon == current_amp)$color
+bckgrd = "#B3ABE0"
+ham_tbs_track@dp@pars$fill = color
+axis_track@dp@pars$fontcolor = "black"
+
+# initialize graphics device
+png(file = "../04_figures/details_trackplot_prox_2.png", height = 1556, width = 2518, units = 'px', res = 300)
+
+# plot CpGs covered across full range
+plotTracks(trackList = list(axis_track, ham_tbs_track, epic_track), 
+           from = start, to = end, 
+           col = color, background.title = color, 
+           background.panel = bckgrd,
+           col.main = color,
+           cex.main = 2,
+           main = "l) Proximal enhancer 2")
+
+# shut off graphics device
+dev.off()
+
+```
+
+# Proximal enhancer 3
+
+```{r}
+# set up amplicon-specific plotting parameters
+current_amp = "Proximal enhancer 3"
+start = filter(amplicons, amplicon == current_amp)$start
+end = filter(amplicons, amplicon == current_amp)$end
+color = filter(amplicons, amplicon == current_amp)$color
+bckgrd = "#B3ABE0"
+ham_tbs_track@dp@pars$fill = color
+axis_track@dp@pars$fontcolor = "black"
+
+# initialize graphics device
+png(file = "../04_figures/details_trackplot_prox_3.png", height = 1556, width = 2518, units = 'px', res = 300)
+
+# plot CpGs covered across full range
+plotTracks(trackList = list(axis_track, ham_tbs_track, epic_track), 
+           from = start, to = end, 
+           col = color, background.title = color, 
+           background.panel = bckgrd,
+           col.main = color,
+           cex.main = 2,
+           main = "m) Proximal enhancer 3")
+
+# shut off graphics device
+dev.off()
+
+```
+
+# 5'TAD
+
+```{r}
+# set up amplicon-specific plotting parameters
+current_amp = "5'TAD"
+start = filter(amplicons, amplicon == current_amp)$start
+end = filter(amplicons, amplicon == current_amp)$end
+color = filter(amplicons, amplicon == current_amp)$color
+bckgrd = "#E0ABAB"
+ham_tbs_track@dp@pars$fill = color
+axis_track@dp@pars$fontcolor = "black"
+
+# initialize graphics device
+png(file = "../04_figures/details_trackplot_5tad.png", height = 1556, width = 2518, units = 'px', res = 300)
+
+# plot CpGs covered across full range
+plotTracks(trackList = list(axis_track, ham_tbs_track, epic_track), 
+           from = start, to = end, 
+           col = color, background.title = color, 
+           background.panel = bckgrd,
+           col.main = color,
+           cex.main = 2,
+           main = "n) 5'TAD")
+
+# shut off graphics device
+dev.off()
+
+```
